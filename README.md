@@ -21,5 +21,5 @@ The benefits to a Python SPICE implementation are:
 
 ###Next Steps
 * Complete level-0 versions of all atomic components and hide internal nodes
-* Implement subcircuit nexting and circuit expansion algorithm
+* Implement n-level subcircuit nesting and circuit expansion algorithm
 * First-pass SPICE parser for importing SPICE *.cir files
