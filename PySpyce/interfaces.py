@@ -9,7 +9,7 @@ class Model():
   '''
   Base model (.model) object.
   '''
-  def __init__(self, name, circuit=None, **kwargs):
+  def __init__(self, name, **kwargs):
     '''
     Creates a base Model.
     Arguments:
@@ -18,7 +18,6 @@ class Model():
     kwargs  -- additional keyword arguments. Stored in params dict.
     '''
     self.name = name
-    self.circuit = circuit
     self.params = kwargs
 
 
@@ -42,6 +41,12 @@ class Device():
 
   def get_time(self):
     return self.subcircuit.simulator.time
+
+  def get_model(self, mname):
+    if mname in self.subcircuit.models:
+      return self.subcircuit.models[mname]
+    else:
+      return None
 
   def setup(self, dt):
     '''Virtual method. Must be implemented by derived class.

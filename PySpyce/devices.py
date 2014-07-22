@@ -231,7 +231,124 @@ class L(Device):
 
   def step(self, dt):
     iL = self.subcircuit.across_history[self.nodes[2]]
-    self.bequiv[2] = -self.value / dt * iL
+    self.bequiv[2] = self.value / dt * iL
+
+
+class D(Device):
+  '''
+  SPICE Diode
+  '''
+  def __init__(self, name, nplus, nminus, mname, area=None, off=None, ic=None, temp=None):
+    '''
+    General form:
+
+         DXXXXXXX N+ N- MNAME <AREA> <OFF> <IC=VD> <TEMP=T>
+
+    Examples:
+
+         DBRIDGE 2 10 DIODE1
+         DCLMP 3 7 DMOD 3.0 IC=0.2
+
+    N+ and N- are the positive and negative nodes, respectively. MNAME is the model name,
+    AREA is the area factor, and OFF indicates an (optional) starting condition on the 
+    device for dc analysis. If the area factor is omitted, a value of 1.0 is assumed. The 
+    (optional) initial condition specification using IC=VD is intended for use with the 
+    UIC option on the .TRAN control line, when a transient analysis is desired starting 
+    from other than the quiescent operating point. The (optional) TEMP value is the 
+    temperature at which this device is to operate, and overrides the temperature 
+    specification on the .OPTION control line.
+    '''
+    Device.__init__(self, name, 2)
+    self.nodes = [nplus, nminus]
+    self.node2port = {nplus:0, nminus:1}
+    self.mname = mname
+    self.area = area
+    self.off = off
+    self.ic = ic
+    self.temp = temp
+  
+  def setup(self, dt):
+    '''
+    todo: doc
+    '''
+    self.params = {
+    'IS' : 1.0e-14,
+    'RS' : 0.0,
+    'N' : 1.0,
+    'TT' : 0.0,
+    'CJO' : 0.0,
+    'VJ' : 1.0,
+    'M' : 0.5,
+    'EG' : 1.11,
+    'XTI' : 3.0,
+    'KF' : 0.0,
+    'AF' : 1.0,
+    'FC' : 0.5,
+    'BV' : float('inf'),
+    'IBV' : 1.0e-3,
+    'TNOM' : 27.0
+    }
+    
+    dmod = self.get_model(self.mname)
+
+    if dmod:
+      for key, value in dmod.params.items():
+        if key.upper() in self.params:
+          self.params[key.upper()] = value  
+
+  def step(self, dt):
+    ''' Do nothing here. Non-linear device.'''
+    pass
+
+  def minor_step(self, dt):
+    vt = 25.85e-3
+    v = self.subcircuit.across[self.nodes[0]] - self.subcircuit.across[self.nodes[1]]
+    v = min(v, 0.8)
+    gd = self.params['IS'] / vt * math.exp(v / vt)
+    id = self.params['IS'] * (math.exp(v / vt) - 1.0)
+    beq = id - gd * v
+    self.jacobian[0, 0] = gd
+    self.jacobian[0, 1] = -gd
+    self.jacobian[1, 0] = -gd
+    self.jacobian[1, 1] = gd
+    self.bequiv[0] = -beq
+    self.bequiv[1] = beq
+
+
+class DMOD(Model):
+  def __init__(self, name, **kwargs):
+    '''
+    The dc characteristics of the diode are determined by the parameters IS and N. 
+    An ohmic resistance, RS, is included. Charge storage effects are modeled by a 
+    transit time, TT, and a nonlinear depletion layer capacitance which is determined
+    by the parameters CJO, VJ, and M. The temperature dependence of the saturation 
+    current is defined by the parameters EG, the energy and XTI, the saturation 
+    current temperature exponent. The nominal temperature at which these parameters 
+    were measured is TNOM, which defaults to the circuit-wide value specified on the
+    .OPTIONS control line. Reverse breakdown is modeled by an exponential increase in
+    the reverse diode current and is determined by the parameters BV and IBV (both of
+    which are positive numbers).
+    
+    #  name parameter                        units default example
+    --------------------------------------------------------------
+    1  IS   saturation current               A     1.0e-14 1.0e-14
+    2  RS   ohmic resistance                 Z     0       10
+    3  N    emission coefficient             -     1       1.0
+    4  TT   transit-time                     sec   0       0.1ns
+    5  CJO  zero-bias junction capacitance   F     0       2pF
+    6  VJ   junction potential               V     1       0.6
+    7  M    grading coefficient              -     0.5     0.5
+    8  EG   activation energy                eV    1.11    1.11 Si, 0.69 Sbd, 0.67 Ge
+    9  XTI  saturation-current temp. exp     -     3.0     3.0 jn, 2.0 Sbd
+    10 KF   flicker noise coefficient        -     0       -
+    11 AF   flicker noise exponent           -     1       -
+    12 FC   coef. forward-bias depletion cap -     0.5     -
+    13 BV   reverse breakdown voltage        V     inf     40.0
+    14 IBV  current at breakdown voltage     A     1.0e-3  -
+    15 TNOM parameter measurement temp       degC  27      50	 
+
+    '''
+    Model.__init__(self, name, **kwargs)
 
 
 class GenericTwoPort(Device):
@@ -268,7 +385,7 @@ class GenericTwoPort(Device):
   def step(self, dt):
     pass
 
-  def minor_step(self):
+  def minor_step(self, dt):
     v = self.subcircuit.across[self.nodes[1]] - self.subcircuit.across[self.nodes[0]]
     g = self.get_g(v)
     i = self.get_i(v) - g * v

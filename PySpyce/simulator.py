@@ -44,7 +44,7 @@ class Simulator():
   Represents a SPICE simulator and provides the functions for SPICE simulation
   and analysis.
   '''
-  def __init__(self, circuit):
+  def __init__(self, circuit, maxitr=100, tol=0.001):
     '''
     Creates a new Simulator instance for the provided circuit.
     Arguments:
@@ -53,6 +53,8 @@ class Simulator():
     self.circuit = circuit
     self.circuit.simulator = self
     self.time = 0.0
+    self.maxitr = maxitr
+    self.tol = tol
 
   def ac(self):
     '''
@@ -179,16 +181,23 @@ class Simulator():
     if pltype.lower() == 'tran': # If the plot type is transient. (TODO: other types)
       for variable in variables: # for each plottable variable:
         trace = None
+        label = ''
         if isinstance(variable, Voltage): # if the plottable is a voltage:
           trace = self.trans_data[variable.node1,:] - self.trans_data[variable.node2,:]
+          if variable.node2 == 0:
+            label = 'V({0:d})'.format(variable.node1)
+          else:
+            label = 'V({0:d},{1:d})'.format(variable.node1, variable.node2)
         elif isinstance(variable, Current): # if the plottable is a current:
           sensor_device = self.circuit.devices[variable.vsource]
           if isinstance(sensor_device, CurrentSensor):
-            trace = self.trans_data[sensor_device.get_current_node(),:]
+            trace = -self.trans_data[sensor_device.get_current_node(),:]
+            label = 'I({0})'.format(variable.vsource)
         if trace is not None:
-          plt.plot(self.trans_time, trace) # crate a matplotlib plot
+          plt.plot(self.trans_time, trace, label=label)# crate a matplotlib plot
 
-      
+      plt.title(self.circuit.title1)
+      plt.legend()
       plt.show()
 
     pass

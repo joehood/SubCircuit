@@ -24,7 +24,7 @@ method is still available and more flexible, especially when working with
 multiple circuit and simulator instances in the same netlist module.
 '''
 
-def title(line1, line2):
+def title(line1, line2=''):
   '''
   Adds titles to the active circuit. If no active circuit exists,
   one is created.
@@ -46,15 +46,16 @@ def device(name, cls, *args, **kwargs):
     active_circuit = Circuit()
   active_circuit.add_device(device)
 
-def model(name, type, *args, **kwargs):
+def model(name, cls, **kwargs):
   '''
   Adds a model to the active circuit. If no active circuit exists,
   one is created.
   '''
   global active_circuit
+  model = cls(name, **kwargs)
   if not active_circuit:
     active_circuit = Circuit()
-  active_circuit.add_model(model) 
+  active_circuit.add_model(model)
 
 def trans(tstep, tstop, start=None, stop=None, uic=False):
   '''
@@ -79,6 +80,10 @@ def plot(pltype, *variables):
   '''
   if active_circuit and active_simulator:
     active_simulator.plot(pltype, *variables)
+
+def clear():
+  active_circuit = None
+  active_simulation = None
    
 
 

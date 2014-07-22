@@ -13,7 +13,7 @@ class SubCircuit():
   '''
   A SPICE subcircuit (.subckt) object. 
   '''
-  def __init__(self, parent, name=None, maxitr=10, tol=0.001):
+  def __init__(self, parent, name=None):
     '''
     Creates an empty SubCircuit.
 
@@ -25,8 +25,6 @@ class SubCircuit():
     self.nodes = 0
     self.name = name
     self.itr = 0
-    self.maxitr = maxitr
-    self.tol = tol
     self.converged = False
     self.simulator = None
 
@@ -71,7 +69,7 @@ class SubCircuit():
     self.across_last = numpy.copy(self.across)
     self.itr = 0
     self.converged = False
-    while self.itr < self.maxitr and not self.converged:
+    while self.itr < self.simulator.maxitr and not self.converged:
       self.minor_step(dt)
       self.itr += 1
 
@@ -95,7 +93,7 @@ class SubCircuit():
     # check convergance:
     self.converged = True
     for v0, v1 in zip(self.across_last, self.across):
-      if abs(v1 - v0) > self.tol:
+      if abs(v1 - v0) > self.simulator.tol:
         self.converged = False
         break
 
