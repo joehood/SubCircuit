@@ -7,7 +7,7 @@ Python Implementation of Berkeley SPICE3 Circuit Simulator
 
 PySpyce requires the [SciPy Stack](http://www.scipy.org/stackspec.html), is available as part of several scientific Python distributions such as [iPython](http://ipython.org/) and [Enthought Canapy](https://www.enthought.com/products/canopy/). There are also SciPy Stack windows binaries available [here](http://www.lfd.uci.edu/~gohlke/pythonlibs/#scipy-stack).
 
-PySpyce is a very _new project_, still in a proof-of-concept phase. The goal is to have a SPICE implementation in (mostly) native Python.
+PySpyce is a **_very new project_**, still in a proof-of-concept phase. The goal is to have a SPICE implementation in (mostly) native Python.
 The benefits to a Python SPICE implementation are:
 * Simple integration with other programs and Python libraries
 * Modular, portable, and easily extensible
