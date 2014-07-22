@@ -7,7 +7,7 @@ The benefits to a Python SPICE implementation are:
 * Simple integration with other programs and Python libraries
 * Modular, portable, and easily extensible
 * Intuitive Python syntax and program structure
-* 
+
 **Example plot:**
 ![Plot](/images/fig1.png)
 
