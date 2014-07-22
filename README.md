@@ -1,5 +1,6 @@
+![PySpyce Logo](/images/pyspyce_logo_128.png)
 PySpyce
-=======
+========
 
 ###Download
 * [PySpyce (Python 2.7) (.zip)](https://github.com/josephmhood/PySpyce/zipball/master)
