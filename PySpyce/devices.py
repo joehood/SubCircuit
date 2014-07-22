@@ -1,15 +1,22 @@
 '''
 Contains the core (atomic) SPICE circuit element definitios.
 '''
+
+# =========================== IMPORTS ==============================
+
 import math
 import cmath
 import sympy
 import numpy
-
 from circuit import *
 from interfaces import *
 
+# =========================== GLOBALS ==============================
+
 v = sympy.symbols('v') # used by GenericTwoPort model.
+
+
+# ===================== ELEMENTARY DEVICES ==========================
 
 
 class R(Device):
@@ -58,6 +65,105 @@ class R(Device):
     Do nothing here. Linear and time-invariant device.
     '''
     pass
+
+
+class C(Device):
+  def __init__(self, name, node1, node2, value, mname=None, l=None, w=None, ic=None):
+    '''General form:
+    CXXXXXXX N+ N- VALUE <IC=INCOND>
+
+    Examples:
+        CBYP 13 0 1UF
+        COSC 17 23 10U IC=3V
+
+    N+ and N- are the positive and negative element nodes, respectively. VALUE is
+    the capacitance in Farads.
+    The (optional) initial condition is the initial (time-zero) value of capacitor
+    voltage (in Volts). Note that the initial conditions (if any) apply 'only' if
+    the UIC option is specified on the .TRAN control line.
+    
+    Semiconductor Capacitors:
+    General form:
+        CXXXXXXX N1 N2 <VALUE> <MNAME> <L=LENGTH> <W=WIDTH> <IC=VAL>
+
+    Examples:
+        CLOAD 2 10 10P
+        CMOD 3 7 CMODEL L=10u W=1u
+
+    This is the more general form of the Capacitor presented in section 6.2, and
+    allows for the calculation of the actual capacitance value from strictly
+    geometric information and the specifications of the process. If VALUE is
+    specified, it defines the capacitance. If MNAME is specified, then the
+    capacitance is calculated from the process information in the model MNAME and
+    the given LENGTH and WIDTH. If VALUE is not specified, then MNAME and LENGTH
+    must be specified. If WIDTH is not specified, then it is taken from the
+    default width given in the model. Either VALUE or MNAME, LENGTH, and WIDTH 
+    may be specified, but not both sets.
+    The capacitor model contains process information that may be used to compute
+    the capacitance from strictly geometric information.
+
+    name    parameter	                      units  default  example
+    ---------------------------------------------------------------
+    CJ      junction bottom capacitance	    F m-2	 -        5e-5
+    CJSW    junction sidewall capacitance	  F m-1	 -        2e-11
+    DEFW    default device width	          m      1e-6     2e-6
+    NARROW  narrowing due to side etching	  m      0.0      1e-7
+
+    The capacitor has a capacitance computed as
+
+    CAP = CJ (LENGTH - NARROW) (WIDTH - NARROW) + 2 CJSW (LENGTH + WIDTH - 2 NARROW)
+    '''
+    Device.__init__(self, name, 2)
+    self.nodes = [node1, node2]
+    self.node2port = {node1:0, node2:1}
+    self.value = value
+    self.ic = ic
+  
+  def setup(self, dt):
+    self.jacobian[0, 0] = self.value / dt
+    self.jacobian[0, 1] = -self.value / dt
+    self.jacobian[1, 0] = -self.value / dt
+    self.jacobian[1, 1] = self.value / dt
+
+  def step(self, dt):
+    vc = self.subcircuit.across_history[self.nodes[1]] - self.subcircuit.across_history[self.nodes[0]]
+    self.bequiv[0] = -self.value / dt * vc
+    self.bequiv[1] = self.value / dt * vc
+
+
+class L(Device, CurrentSensor):
+  def __init__(self, name, node1, node2, internal, value, ic=None):
+    Device.__init__(self, name, 3)
+    self.nodes = [node1, node2, internal]
+    self.node2port = {node1:0, node2:1, internal:2}
+    self.value = value
+    self.ic = ic
+  
+  def setup(self, dt):
+    self.jacobian[0, 2] = 1.0
+    self.jacobian[1, 2] = -1.0
+    self.jacobian[2, 0] = 1.0
+    self.jacobian[2, 1] = -1.0
+    self.jacobian[2, 2] = -self.value / dt
+
+  def step(self, dt):
+    iL = self.subcircuit.across_history[self.nodes[2]]
+    self.bequiv[2] = self.value / dt * iL
+
+
+class K(Device):
+  pass # todo
+
+
+class S(Device):
+  pass # todo
+
+
+class W(Device):
+  pass # todo
+
+
+# ================ VOLTAGE AND CURRENT SOURCES =======================
 
 
 class V(Device, CurrentSensor):
@@ -150,88 +256,52 @@ class V(Device, CurrentSensor):
     return self.nodes[2]
 
 
-class C(Device):
-  def __init__(self, name, node1, node2, value, mname=None, l=None, w=None, ic=None):
-    '''General form:
-    CXXXXXXX N+ N- VALUE <IC=INCOND>
-
-    Examples:
-        CBYP 13 0 1UF
-        COSC 17 23 10U IC=3V
-
-    N+ and N- are the positive and negative element nodes, respectively. VALUE is
-    the capacitance in Farads.
-    The (optional) initial condition is the initial (time-zero) value of capacitor
-    voltage (in Volts). Note that the initial conditions (if any) apply 'only' if
-    the UIC option is specified on the .TRAN control line.
-    
-    Semiconductor Capacitors:
-    General form:
-        CXXXXXXX N1 N2 <VALUE> <MNAME> <L=LENGTH> <W=WIDTH> <IC=VAL>
-
-    Examples:
-        CLOAD 2 10 10P
-        CMOD 3 7 CMODEL L=10u W=1u
-
-    This is the more general form of the Capacitor presented in section 6.2, and
-    allows for the calculation of the actual capacitance value from strictly
-    geometric information and the specifications of the process. If VALUE is
-    specified, it defines the capacitance. If MNAME is specified, then the
-    capacitance is calculated from the process information in the model MNAME and
-    the given LENGTH and WIDTH. If VALUE is not specified, then MNAME and LENGTH
-    must be specified. If WIDTH is not specified, then it is taken from the
-    default width given in the model. Either VALUE or MNAME, LENGTH, and WIDTH 
-    may be specified, but not both sets.
-    The capacitor model contains process information that may be used to compute
-    the capacitance from strictly geometric information.
-
-    name    parameter	                      units  default  example
-    ---------------------------------------------------------------
-    CJ      junction bottom capacitance	    F m-2	 -        5e-5
-    CJSW    junction sidewall capacitance	  F m-1	 -        2e-11
-    DEFW    default device width	          m      1e-6     2e-6
-    NARROW  narrowing due to side etching	  m      0.0      1e-7
-
-    The capacitor has a capacitance computed as
-
-    CAP = CJ (LENGTH - NARROW) (WIDTH - NARROW) + 2 CJSW (LENGTH + WIDTH - 2 NARROW)
-    '''
-    Device.__init__(self, name, 2)
-    self.nodes = [node1, node2]
-    self.node2port = {node1:0, node2:1}
-    self.value = value
-    self.ic = ic
-  
-  def setup(self, dt):
-    self.jacobian[0, 0] = self.value / dt
-    self.jacobian[0, 1] = -self.value / dt
-    self.jacobian[1, 0] = -self.value / dt
-    self.jacobian[1, 1] = self.value / dt
-
-  def step(self, dt):
-    vc = self.subcircuit.across_history[self.nodes[1]] - self.subcircuit.across_history[self.nodes[0]]
-    self.bequiv[0] = -self.value / dt * vc
-    self.bequiv[1] = self.value / dt * vc
+class I(Device):
+  pass # todo
 
 
-class L(Device):
-  def __init__(self, name, node1, node2, internal, value, ic=None):
-    Device.__init__(self, name, 3)
-    self.nodes = [node1, node2, internal]
-    self.node2port = {node1:0, node2:1, internal:2}
-    self.value = value
-    self.ic = ic
-  
-  def setup(self, dt):
-    self.jacobian[0, 2] = 1.0
-    self.jacobian[1, 2] = -1.0
-    self.jacobian[2, 0] = 1.0
-    self.jacobian[2, 1] = -1.0
-    self.jacobian[2, 2] = -self.value / dt
+# ================== LINEAR DEPENDANT SOURCES ========================
 
-  def step(self, dt):
-    iL = self.subcircuit.across_history[self.nodes[2]]
-    self.bequiv[2] = self.value / dt * iL
+
+class G(Device):
+  pass # todo
+
+
+class E(Device):
+  pass # todo
+
+
+class F(Device):
+  pass # todo
+
+
+class H(Device):
+  pass # todo
+
+
+# =============== NON-LINEAR DEPENDANT SOURCES =======================
+
+
+class B(Device):
+  pass # todo
+
+
+# ==================== TRANSMISSION LINES ============================
+
+
+class T(Device):
+  pass # todo
+
+
+class O(Device):
+  pass # todo
+
+
+class U(Device):
+  pass # todo
+
+
+# =================== DIODES AND TRANSISTORS =========================
 
 
 class D(Device):
@@ -315,46 +385,30 @@ class D(Device):
     self.bequiv[1] = beq
 
 
-class DMOD(Model):
-  def __init__(self, name, **kwargs):
-    '''
-    The dc characteristics of the diode are determined by the parameters IS and N. 
-    An ohmic resistance, RS, is included. Charge storage effects are modeled by a 
-    transit time, TT, and a nonlinear depletion layer capacitance which is determined
-    by the parameters CJO, VJ, and M. The temperature dependence of the saturation 
-    current is defined by the parameters EG, the energy and XTI, the saturation 
-    current temperature exponent. The nominal temperature at which these parameters 
-    were measured is TNOM, which defaults to the circuit-wide value specified on the
-    .OPTIONS control line. Reverse breakdown is modeled by an exponential increase in
-    the reverse diode current and is determined by the parameters BV and IBV (both of
-    which are positive numbers).
-    
-    #  name parameter                        units default example
-    --------------------------------------------------------------
-    1  IS   saturation current               A     1.0e-14 1.0e-14
-    2  RS   ohmic resistance                 Z     0       10
-    3  N    emission coefficient             -     1       1.0
-    4  TT   transit-time                     sec   0       0.1ns
-    5  CJO  zero-bias junction capacitance   F     0       2pF
-    6  VJ   junction potential               V     1       0.6
-    7  M    grading coefficient              -     0.5     0.5
-    8  EG   activation energy                eV    1.11    1.11 Si, 0.69 Sbd, 0.67 Ge
-    9  XTI  saturation-current temp. exp     -     3.0     3.0 jn, 2.0 Sbd
-    10 KF   flicker noise coefficient        -     0       -
-    11 AF   flicker noise exponent           -     1       -
-    12 FC   coef. forward-bias depletion cap -     0.5     -
-    13 BV   reverse breakdown voltage        V     inf     40.0
-    14 IBV  current at breakdown voltage     A     1.0e-3  -
-    15 TNOM parameter measurement temp       degC  27      50	 
+class Q(Device):
+  pass # todo
+ 
 
-    '''
-    Model.__init__(self, name, **kwargs)
+class J(Device):
+  pass # todo 
+
+
+class M(Device):
+  pass # todo 
+
+
+class Z(Device):
+  pass # todo
+
+
+# ====================== EXPERIMENTAL DEVICES ========================
 
 
 class GenericTwoPort(Device):
   '''
   EXPERIMENTAL
-  Device that allows the definition of a two port device with an arbitrary current function.
+  Device that allows the definition of a two port device with an arbitrary
+  non-linear current function.
   '''
   def __init__(self, name, node1, node2, i):
     '''
@@ -397,11 +451,10 @@ class GenericTwoPort(Device):
     self.bequiv[1] = i
 
 
-# ============================ MODELS ==================================
+# ============================ MODELS ================================
 
-# TODO: implement these or find a way to make them generic...
 
-class RMOD(Model):
+class RMod(Model):
   '''Semiconductor resistor model.'''
   def __init__(self, name, **kwargs):
     '''
@@ -447,25 +500,161 @@ class RMOD(Model):
     Model.__init__(self, name, **kwargs)
 
 
+class CMod(Model):
+  '''Semiconductor capacitor model.'''
+  def __init__(self, name, **kwargs):
+    '''
+    todo: add docs from spice docs
+    '''
+    Model.__init__(self, name, **kwargs)
 
-"""
-'C', 	  # Semiconductor capacitor model 
-'SW', 	# Voltage controlled switch 
-'CSW', 	# Current controlled switch 
-'URC', 	# Uniform distributed RC model 
-'LTRA', # Lossy transmission line model 
-'D', 	  # Diode model 
-'NPN',	# NPN BJT model 
-'PNP',	# PNP BJT model 
-'NJF', 	# N-channel JFET model 
-'PJF',	# P-channel JFET model 
-'NMOS', # 	N-channel MOSFET model 
-'PMOS',	# P-channel MOSFET model 
-'NMF', 	# N-channel MESFET model 
-'PMF' 	# P-channel MESFET model 
-"""
 
-# ======================== SOURCE STIMULI MODELS ================================
+class SwMod(Model):
+  ''' Voltage controlled switch model'''
+  def __init__(self, name, **kwargs):
+    '''
+    todo: add docs from spice docs
+    '''
+    Model.__init__(self, name, **kwargs)
+
+
+class CwMod(Model):
+  '''Current controlled switch model.'''
+  def __init__(self, name, **kwargs):
+    '''
+    todo: add docs from spice docs
+    '''
+    Model.__init__(self, name, **kwargs)
+
+
+class UrcMod(Model):
+  '''Uniform distributed RC model.'''
+  def __init__(self, name, **kwargs):
+    '''
+    todo: add docs from spice docs
+    '''
+    Model.__init__(self, name, **kwargs)
+
+
+class LtraMod(Model):
+  '''Lossy transmission line model '''
+  def __init__(self, name, **kwargs):
+    '''
+    todo: add docs from spice docs
+    '''
+    Model.__init__(self, name, **kwargs)
+
+
+class DMod(Model):
+  def __init__(self, name, **kwargs):
+    '''
+    The dc characteristics of the diode are determined by the parameters IS and N. 
+    An ohmic resistance, RS, is included. Charge storage effects are modeled by a 
+    transit time, TT, and a nonlinear depletion layer capacitance which is determined
+    by the parameters CJO, VJ, and M. The temperature dependence of the saturation 
+    current is defined by the parameters EG, the energy and XTI, the saturation 
+    current temperature exponent. The nominal temperature at which these parameters 
+    were measured is TNOM, which defaults to the circuit-wide value specified on the
+    .OPTIONS control line. Reverse breakdown is modeled by an exponential increase in
+    the reverse diode current and is determined by the parameters BV and IBV (both of
+    which are positive numbers).
+    
+    #  name parameter                        units default example
+    --------------------------------------------------------------
+    1  IS   saturation current               A     1.0e-14 1.0e-14
+    2  RS   ohmic resistance                 Z     0       10
+    3  N    emission coefficient             -     1       1.0
+    4  TT   transit-time                     sec   0       0.1ns
+    5  CJO  zero-bias junction capacitance   F     0       2pF
+    6  VJ   junction potential               V     1       0.6
+    7  M    grading coefficient              -     0.5     0.5
+    8  EG   activation energy                eV    1.11    1.11 Si, 0.69 Sbd, 0.67 Ge
+    9  XTI  saturation-current temp. exp     -     3.0     3.0 jn, 2.0 Sbd
+    10 KF   flicker noise coefficient        -     0       -
+    11 AF   flicker noise exponent           -     1       -
+    12 FC   coef. forward-bias depletion cap -     0.5     -
+    13 BV   reverse breakdown voltage        V     inf     40.0
+    14 IBV  current at breakdown voltage     A     1.0e-3  -
+    15 TNOM parameter measurement temp       degC  27      50	 
+
+    '''
+    Model.__init__(self, name, **kwargs)
+
+
+class NpnMod(Model):
+  '''NPN BJT model.'''
+  def __init__(self, name, **kwargs):
+    '''
+    todo: add docs from spice docs
+    '''
+    Model.__init__(self, name, **kwargs)
+
+
+class PnpMod(Model):
+  '''PNP BJT model.'''
+  def __init__(self, name, **kwargs):
+    '''
+    todo: add docs from spice docs
+    '''
+    Model.__init__(self, name, **kwargs)
+
+
+class NfjMod(Model):
+  '''N-channel JFET model'''
+  def __init__(self, name, **kwargs):
+    '''
+    todo: add docs from spice docs
+    '''
+    Model.__init__(self, name, **kwargs)
+
+
+class PfjMod(Model):
+  '''P-channel JFET model.'''
+  def __init__(self, name, **kwargs):
+    '''
+    todo: add docs from spice docs
+    '''
+    Model.__init__(self, name, **kwargs)
+
+
+class NmosMod(Model):
+  '''N-channel MOSFET model'''
+  def __init__(self, name, **kwargs):
+    '''
+    todo: add docs from spice docs
+    '''
+    Model.__init__(self, name, **kwargs)
+
+
+class PmosMod(Model):
+  '''P-channel MOSFET model.'''
+  def __init__(self, name, **kwargs):
+    '''
+    todo: add docs from spice docs
+    '''
+    Model.__init__(self, name, **kwargs)
+
+
+class NmfMod(Model):
+  '''N-channel MESFET model'''
+  def __init__(self, name, **kwargs):
+    '''
+    todo: add docs from spice docs
+    '''
+    Model.__init__(self, name, **kwargs)
+
+
+class PmfMod(Model):
+  '''P-channel MESFET model.'''
+  def __init__(self, name, **kwargs):
+    '''
+    todo: add docs from spice docs
+    '''
+    Model.__init__(self, name, **kwargs)
+
+
+# =================== SOURCE STIMULI MODELS ==========================
+
 
 class Pulse(Stimulus):
   def __init__(self, v1, v2, td=0.0, tr=None, tf=None, pw=None, per=None):
@@ -504,7 +693,6 @@ class Pulse(Stimulus):
 
   def step(self, device, dt):
     pass
-
 
 
 class Sin(Stimulus):
@@ -552,3 +740,42 @@ class Sin(Stimulus):
     else:
       value = self.vo + self.va * math.sin(2.0 * math.pi * self.freq  * (t + self.td))
     return value
+
+
+class Exp(Stimulus):
+  def __init__(self, v1, v2, td1, tau1, td2, tau2):
+    pass # todo
+
+  def setup(self):
+    pass
+
+  def step(self):
+    pass
+
+
+class Pwl(Stimulus):
+  def __init__(self, *time_voltage_pairs):
+    pass # todo
+
+  def setup(self):
+    pass
+
+  def step(self):
+    pass
+
+
+class Sffm(Stimulus):
+  def __init__(self, vo, va, fc, md1, fs):
+    pass # todo
+
+  def setup(self):
+    pass
+
+  def step(self):
+    pass
+
+
+# ======================= MIAN FUNCTION ==============================
+
+if __name__ == '__main__':
+  pass # TODO: test code here

@@ -7,7 +7,7 @@ import sympy
 import numpy.linalg as la
 
 
-#======================= CLASS DEFINITIONS ===========================
+#========================= CLASSES =============================
 
 class SubCircuit():
   '''

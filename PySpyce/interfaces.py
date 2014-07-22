@@ -5,6 +5,7 @@ Contains base class definitions for spyce Models and Devices.
 import numpy
 from circuit import *
 
+
 class Model():
   '''
   Base model (.model) object.
@@ -68,6 +69,7 @@ class Device():
     '''
     self.step(dt)
     pass
+
 
 class CurrentSensor():
   '''Should derive from this class and implement get_current_node if this device has

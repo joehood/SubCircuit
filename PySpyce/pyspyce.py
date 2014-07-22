@@ -1,19 +1,54 @@
-# imports:
+'''
+PySpyce Circuit Simulator.
+
+Example usage:
+
+<code>
+from pyspyce import *
+
+title('Series RLC', '')
+device('V1', V, 1, 0, 4, Sin(0.0, 1.0, 100.0))
+device('R1', R, 1, 2, 1.0)
+device('L1', L, 2, 3, 5, 0.01, ic=0.0)
+device('C1', C, 3, 0, 0.001, ic=0.0)
+trans(0.0005, 0.05)
+plot('tran', Voltage(2), Voltage(3), Current('V1'))
+</code>
+
+'''
+
+#============================== IMPORTS =======================================
+
 import math
 import cmath
 import numpy
 import sympy
-
-# project imports:
 from circuit import *
 from interfaces import *
 from devices import *
 from simulator import *
 
 #============================== GLOBALS ========================================
+
 v = sympy.symbols('v')
 active_circuit = None
 active_simulator = None
+
+# There are several set variables that SPICE3 uses but nutmeg does not. They are:
+editor = None    # The editor to use for the edit command.
+modelcard = None # The name of the model card (normally .model).
+noaskquit = None # Do not check to make sure that there are no circuits suspended
+                 # and no plots unsaved. Normally SPICE3 will warn the user when
+                 # he tries to quit if this is the case.
+nobjthack = None # Assume that BJT's have 4 nodes.
+noparse = None   # Don't attempt to parse decks when they are read in (useful for
+                 # debugging). Of course, they cannot be run if they are not parsed.
+nosubckt = None  # Don't expand subcircuits.
+renumber = None  # Renumber input lines when a deck has .include's.
+subend = None    # The card to end subcircuits (normally .ends).
+subinvoke = None # The prefix to invoke subcircuits (normally x).
+substart = None  # The card to begin subcircuits (normally .subckt).
+
 
 #========================== NETLIST FUNCTIONS ==================================
 '''
@@ -82,11 +117,12 @@ def plot(pltype, *variables):
     active_simulator.plot(pltype, *variables)
 
 def clear():
+  '''
+  Removes active circuit and active simulator from workspace.
+  '''
   active_circuit = None
   active_simulation = None
    
-
-
 #=========================== SPICE3 COMMANDS ===================================
 
 def setcirc(name):
@@ -111,7 +147,6 @@ def ac(*args):
 def dc(*args): 
   '''Do a dc transfer curve analysis.'''
   pass
-
 
 def listing(type='logical'): 
   ''' type may be: 'logical', 'physical', 'deck', or 'expand'.
@@ -239,31 +274,7 @@ def linearize(vectors):
   did.'''
   pass
 
-'''
-There are several set variables that SPICE3 uses but nutmeg does not. They are:
 
-
-editor 
-The editor to use for the edit command.
-modelcard 
-The name of the model card (normally .model).
-noaskquit 
-Do not check to make sure that there are no circuits suspended and no plots unsaved. Normally SPICE3 will warn the user when he tries to quit if this is the case.
-nobjthack 
-Assume that BJT's have 4 nodes.
-noparse 
-Don't attempt to parse decks when they are read in (useful for debugging). Of course, they cannot be run if they are not parsed.
-nosubckt 
-Don't expand subcircuits.
-renumber 
-Renumber input lines when a deck has .include's.
-subend 
-The card to end subcircuits (normally .ends).
-subinvoke 
-The prefix to invoke subcircuits (normally x).
-substart 
-The card to begin subcircuits (normally .subckt).
-'''
 
 #============================ NUTMEG FUNCTIONS ==================================
 
@@ -404,7 +415,8 @@ not ((ac3.FREQ[32] & tran1.TIME[10]) gt 3)
 '''
 
 #============================ NUTMEG MATH ==================================
-''' TODO: convert to code stubs from SPICE3 docs'''
+
+''' TODO: convert to code stubs from NUTMEG and SPICE3 docs as needed ... '''
 
 '''
 Nutmeg commands are as follows:
@@ -646,4 +658,4 @@ If you want to use a different mfbcap file than the default (usually ~cad/lib/mf
 '''
 
 if __name__ == '__main__':
-  pass
+  pass # todo add test code

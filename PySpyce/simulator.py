@@ -2,16 +2,23 @@
 Contains the functions for analysis and simulation of a provided SPICE network.
 '''
 
+# ============================== IMPORTS ===================================
+
 import numpy
 import sympy
 import matplotlib.pyplot as plt
-
 from circuit import *
 from devices import *
 from interfaces import *
 
 
-class Voltage():
+# ============================== PLOTABLES ===================================
+
+class Plotable:
+  pass
+
+
+class Voltage(Plotable):
   '''
   Represents a plottable voltage value.
   '''
@@ -26,7 +33,7 @@ class Voltage():
     self.node2 = node2
 
 
-class Current():
+class Current(Plotable):
   '''
   Represents a plottable current value.
   '''
@@ -38,6 +45,9 @@ class Current():
     '''
     self.vsource = vsource
   
+
+# ============================== SIMULATOR ===================================
+
 
 class Simulator():
   '''
@@ -209,9 +219,6 @@ class Simulator():
     pass
 
 
-
-
-
-
-
+if __name__ =='__main__':
+  pass # todo: test code
 
