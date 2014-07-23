@@ -35,6 +35,9 @@
     <Compile Include="simulator.py" />
     <Compile Include="ui.py" />
   </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Artwork\" />
+  </ItemGroup>
   <Import Condition="Exists($(PtvsTargetsFile))" Project="$(PtvsTargetsFile)" />
   <Import Condition="!Exists($(PtvsTargetsFile))" Project="$(MSBuildToolsPath)\Microsoft.Common.targets" />
   <!-- Uncomment the CoreCompile target to enable the Build command in
