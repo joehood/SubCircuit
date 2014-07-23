@@ -5,7 +5,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>dcf0aa45-f466-4217-b158-2a768db5d388</ProjectGuid>
     <ProjectHome>.</ProjectHome>
-    <StartupFile>examples.py</StartupFile>
+    <StartupFile>pyspyce.pyw</StartupFile>
     <SearchPath>
     </SearchPath>
     <WorkingDirectory>.</WorkingDirectory>
@@ -28,10 +28,12 @@
   <ItemGroup>
     <Compile Include="circuit.py" />
     <Compile Include="devices.py" />
+    <Compile Include="editor.py" />
     <Compile Include="examples.py" />
     <Compile Include="interfaces.py" />
-    <Compile Include="pyspyce.py" />
+    <Compile Include="pyspyce.pyw" />
     <Compile Include="simulator.py" />
+    <Compile Include="ui.py" />
   </ItemGroup>
   <Import Condition="Exists($(PtvsTargetsFile))" Project="$(PtvsTargetsFile)" />
   <Import Condition="!Exists($(PtvsTargetsFile))" Project="$(MSBuildToolsPath)\Microsoft.Common.targets" />

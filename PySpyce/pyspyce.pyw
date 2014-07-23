@@ -23,13 +23,15 @@ import math
 import cmath
 import numpy
 import sympy
+import wx
+import ui
+import editor
 from circuit import *
 from interfaces import *
 from devices import *
 from simulator import *
 
 #============================== GLOBALS ========================================
-
 v = sympy.symbols('v')
 active_circuit = None
 active_simulator = None
@@ -122,12 +124,12 @@ def clear():
   '''
   active_circuit = None
   active_simulation = None
-   
+
 #=========================== SPICE3 COMMANDS ===================================
 
 def setcirc(name):
-  '''Change the current circuit. The current circuit is the one that is used for 
-  the simulation commands below. When a circuit is loaded with the source 
+  '''Change the current circuit. The current circuit is the one that is used for
+  the simulation commands below. When a circuit is loaded with the source
   function it becomes the current circuit.
   '''
   pass
@@ -136,7 +138,7 @@ def op(*args):
   '''Do an operating point analysis.'''
   pass
 
-def tran(*args): 
+def tran(*args):
   '''Do a transient analysis.'''
   pass
 
@@ -144,23 +146,23 @@ def ac(*args):
   '''Do an ac analysis.'''
   pass
 
-def dc(*args): 
+def dc(*args):
   '''Do a dc transfer curve analysis.'''
   pass
 
-def listing(type='logical'): 
+def listing(type='logical'):
   ''' type may be: 'logical', 'physical', 'deck', or 'expand'.
-  Print a listing of the current circuit. If the logical argument is given, 
-  the listing is with all continuation lines collapsed into one line, and if 
-  the physical argument is given the lines are printed out as they were found 
-  in the file. The default is logical. A deck listing is just like the physical 
-  listing, except without the line numbers it recreates the input file verbatim 
-  (except that it does not preserve case). If the word expand is present, the 
+  Print a listing of the current circuit. If the logical argument is given,
+  the listing is with all continuation lines collapsed into one line, and if
+  the physical argument is given the lines are printed out as they were found
+  in the file. The default is logical. A deck listing is just like the physical
+  listing, except without the line numbers it recreates the input file verbatim
+  (except that it does not preserve case). If the word expand is present, the
   circuit will be printed with all subcircuits expanded.
   '''
   pass
 
-def edit(file): 
+def edit(file):
   '''Print the current SPICE3 deck into a file, call up the editor on that file
   and allow the user to modify it, and then read it back in, replacing the
   origonal deck. If a filename is given, then edit that file and load it, making
@@ -168,7 +170,7 @@ def edit(file):
   '''
   pass
 
-def resume(): 
+def resume():
   '''Resume a simulation after a stop.'''
   pass
 
@@ -184,7 +186,7 @@ def state():
   '''Print the state of the circuit. (This command is largely unimplemented.)'''
   pass
 
-def save(all, output): 
+def save(all, output):
   '''Save a set of outputs, discarding the rest. If a node has been mentioned in
   a save command, it will appear in the working plot after a run has completed,
   or in the rawfile if spice is run in batch mode. If a node is traced or
@@ -193,13 +195,13 @@ def save(all, output):
   '''
   pass
 
-def stop(condition): 
+def stop(condition):
   '''Set a breakpoint. The argument after n means stop after n iteration number
   n, and the argument when something cond something means stop when the first
   something is in the given relation with the second something, the possible
   relations being eq or = (equal to), ne or <> (not equal to), gt or > (greater
   than), lt or < (less than), ge or >= (greater than or equal to), and le or <=
-  (less than or equal to). IO redirection is disabled for the stop command, 
+  (less than or equal to). IO redirection is disabled for the stop command,
   since the relational operations conflict with it (it doesn't produce any
   output anyway). The somethings above may be node names in the running circuit,
   or real values. If more than one condition is given, e.g. stop after 4 when
@@ -207,17 +209,17 @@ def stop(condition):
   '''
   pass
 
-def trace(node): 
+def trace(node):
   '''Trace nodes. Every iteration the value of the node is printed to the
   standard output.
   '''
   pass
 
-def iplot(nodes): 
+def iplot(nodes):
   '''Incrementally plot the values of the nodes while SPICE3 runs.'''
   pass
 
-def step(number): 
+def step(number):
   '''Iterate number times, or once, and then stop.'''
   pass
 
@@ -226,8 +228,8 @@ def status():
   pass
 
 def delete(debug_number):
-  '''Delete the specified breakpoints and traces. The debug numbers are those 
-  shown by the status command. (Unless you do status > file, in which case the 
+  '''Delete the specified breakpoints and traces. The debug numbers are those
+  shown by the status command. (Unless you do status > file, in which case the
   debug numbers aren't printed.)
   '''
   pass
@@ -237,7 +239,7 @@ def reset():
   after one or more analyses have been done already), and re-parse the deck. The
   circuit can then be re-run. (Note: this command used to be end in SPICE 3a5
   and earlier versions -- end is now used for control structures.) The run
-  command will take care of this automatically, so this command should not be 
+  command will take care of this automatically, so this command should not be
   necessary...'''
   pass
 
@@ -247,7 +249,7 @@ def run(rawfile):
   rawfile if it was given, in addition to being available interactively.'''
   pass
 
-def source(file): 
+def source(file):
   '''Read the SPICE3 input file file. Nutmeg and SPICE3 commands may be included
   in the file, and must be enclosed between the lines .control and .endc. These
   commands are executed immediately after the circuit is loaded, so a control
@@ -380,8 +382,8 @@ def interpolate(plot_vector):
 
 '''
 A vector may be either the name of a vector already defined, a floating- point
- number (a scalar), or a list like [elt1 elt2 ... eltn], which is a vector of 
- length n. A number may be written in any format acceptable to SPICE, such as 
+ number (a scalar), or a list like [elt1 elt2 ... eltn], which is a vector of
+ length n. A number may be written in any format acceptable to SPICE, such as
  14.6MEG or -1.231E-4. Note that you can either use scientific notation or one of
  the abbreviations like MEG or G, but not both. As with SPICE, a number may have
  trailing alphabetic characters after it.
@@ -420,9 +422,9 @@ not ((ac3.FREQ[32] & tran1.TIME[10]) gt 3)
 
 '''
 Nutmeg commands are as follows:
-plot exprs [ylimit ylo yhi] [xlimit xlo xhi] [xindices xilo xihi] 
-[xcompress comp] [xdelta xdel] [ydelta ydel] [xlog] [ylog] 
-[vs xname] [xlabel word] [ylabel word] [title word] [samep] 
+plot exprs [ylimit ylo yhi] [xlimit xlo xhi] [xindices xilo xihi]
+[xcompress comp] [xdelta xdel] [ydelta ydel] [xlog] [ylog]
+[vs xname] [xlabel word] [ylabel word] [title word] [samep]
 Plot the given exprs on the screen (if you are on a graphics terminal). The xlimi
 t and ylimit arguments determine the high and low x- and y-limits of the axes,
  respectively. The xindices arguments determine what range of points are to be plotted
@@ -437,112 +439,112 @@ t and ylimit arguments determine the high and low x- and y-limits of the axes,
  parameters (other than xname) from the previous plot, hardcopy, or asciiplot command
  will be used unless re-defined on the command line. Finally, the title argument will
  be used in the place of the plot name at the bottom of the graph.
-hardcopy file plotargs 
+hardcopy file plotargs
 Just like plot, except creates a file called file containing the plot. The file is an
  image in plot(5) format, and can be printed by either the plot(1) program or lpr with
  the -g flag.
-asciiplot plotargs 
+asciiplot plotargs
 Produce a line printer plot of the vectors. The plot is sent to the standard output, so
  you can put it into a file with asciiplot args ... > file. The set options width, height,
  and nobreak determine the width and height of the plot, and whether there are page
  breaks, respectively. Note that you will have problems if you try to asciiplot something
  with an X-scale that isn't monotonic (i.e, something like sin(TIME) ), because asciiplot
  uses a simple-minded sort of linear interpolation.
-define function(arg1, arg2, ...) expression 
-Define the user-definable function with the name function and arguments arg1, arg2, ... 
-to be expression, which may involve the arguments. When the function is later used, the arguments it is given are substituted for the formal arguments when it is parsed. If expression is not present, any definition for function is printed, and if there are no arguments to define then all currently active definitions are printed. Note that you may have different functions defined with the same name but different arities. Some useful definitions are: 
-define max(x,y) (x > y) * x + (x <= y) * y 
+define function(arg1, arg2, ...) expression
+Define the user-definable function with the name function and arguments arg1, arg2, ...
+to be expression, which may involve the arguments. When the function is later used, the arguments it is given are substituted for the formal arguments when it is parsed. If expression is not present, any definition for function is printed, and if there are no arguments to define then all currently active definitions are printed. Note that you may have different functions defined with the same name but different arities. Some useful definitions are:
+define max(x,y) (x > y) * x + (x <= y) * y
 define min(x,y) (x < y) * x + (x >= y) * y
-undefine function ... 
+undefine function ...
 Definitions for the named user-defined functions are deleted.
-let name = expr 
+let name = expr
 Creates a new vector called name with the value specified by expr, an expression as described above. If expr is [] (a zero-length vector) then the vector becomes undefined. If there are no arguments, let is the same as display.
-print [col] [line] expr ... 
+print [col] [line] expr ...
 Prints the vector described by the expression expr. If the col argument is present, print the vectors named side by side. If line is given, the vectors are printed horizontally. col is the default, unless all the vectors named have a length of one, in which case line is the default. The options width, length, and nobreak are effective for this command (see asciiplot). If the expression is all, all of the vectors available are printed. Thus print col all > file will print everything in the file in SPICE2 format. The scale vector (time, frequency) will always be in the first column unless the variable noprintscale is true.
-load [filename] ... 
+load [filename] ...
 Loads the raw data in either binary or ascii format from the files named. The default filename is rawspice, or the argument to the -r flag if there was one.
-source filename 
+source filename
 Reads commands from the file filename. Lines beginning with the character * are considered comments and ignored.
-help [all] [command ...] 
+help [all] [command ...]
 Prints help. If the argument all is given, a short description of everything you could possibly type is printed. If commands are given, descriptions of those commands are printed. Otherwise help for only a few major commands is printed.
-display [varname ...] 
+display [varname ...]
 Prints a summary of currently defined vectors, or of the names specified. The vectors are sorted by name unless the variable nosort is set. The information given is the name of the vector, the length, the type of the vector, and whether it is real or complex data. Additionally, one vector will be labeled [scale]. When a command such as plot is given without a vs argument, this scale is used for the X-axis. It is always the first vector in a rawfile, or the first vector defined in a new plot. If you undefine the scale (i.e, let TIME = []), a random remaining vector will become the scale.
-setplot [plotname] 
+setplot [plotname]
 Set the current plot to the plot with the given name, or if no name is given, prompt the user with a menu. (Note that the plots are named as they are loaded, with names like tran1 or op2. These names are shown by the setplot and display commands and are used by diff, below.) If the "New plot" item is selected, the current plot will become one with no vectors defined. Note that here the word "plot" refers to a group of vectors that are the result of one SPICE run. When more than one file is loaded in, or more than one plot is present in one file, nutmeg keeps them seperate and only shows you the vectors in the current plot.
-settype type vector ... 
+settype type vector ...
 Change the type of the named vectors to type. Type names can be found in the manual page for sconvert.
-diff plot1 plot2 [vec ...] 
+diff plot1 plot2 [vec ...]
 Compare all the vectors in the specified plots, or only the named vectors if any are given. There are different vectors in the two plots, or any values in the vectors differ significantly the difference is reported. The variables abstol, reltol, and vntol are used to determine what "significantly" means (see the SPICE3 User's Manual).
 quit Quit nutmeg.
 bug Send a bug report. (If you have defined BUGADDR, the mail will go there.)
-write [file] [exprs] 
+write [file] [exprs]
 Writes out the expr's to file. First vectors are grouped together by plots, and written out as such. (I.e, if the expression list contained three vectors from one plot and two from another, then two plots will be written, one with three vectors and one with two.) Additionally, if the scale for a vector isn't present, it is automatically written out as well. The default format is ascii, but this can be changed with the set filetype command. The default filename is rawspice, or the argument to the -r flag on the command line, if there was one, and the default expression list is all.
-shell [args ...] 
+shell [args ...]
 Fork a shell, or execute the arguments as a command to the shell.
-alias [word] [text ...] 
+alias [word] [text ...]
 Causes word to be aliased to text. History substitutions may be used, as in C-shell aliases.
-unalias [word ...] 
+unalias [word ...]
 Removes any aliases present for the words.
-history [number] 
+history [number]
 Print out the history, or the last number commands typed at the keyboard. Note: in \\*S version 3a7 and earlier, all commands (including ones read from files) were saved.
-set [word] [word = value] ... 
+set [word] [word = value] ...
 Set the value of word to be value, if it is present. You can set any word to be any value, numeric or string. If no value is given then the value is the boolean 'true'. The value of word may be inserted into a command by writing $word. If a variable is set to a list of values that are enclosed in parentheses (which must be seperated from their values by white space), the value of the variable is the list. The variables meaningful to nutmeg (of which there are too many) are:
 abstol The absolute tolerance used by the diff command.
-appendwrite 
+appendwrite
 Append to the file when a write command is issued, if one already exists.
 colorN These variables determine the colors used, if X is being run on a color display. N may be between 0 and 15. Color 0 is the background, color 1 is the grid and text color, and colors 2 through 15 are used in order for vectors plotted. The value of the color variables should be names of colors, which may be found in the file /usr/lib/rgb.txt.
-combplot 
+combplot
 Plot vectors by drawing a vertical line from each point to the X-axis, as opposed to joining the points. Note that this option is subsumed in the plottype option, below.
-cpdebug 
+cpdebug
 Print cshpar debugging information. (Must be complied with the -DCPDEBUG flag.)
 debug If set then a lot of debugging information is printed. (Must be compiled with the -DFTEDEBUG flag.)
 device The name (/dev/tty??) of the graphics device. If this variable isn't set then the user's terminal is used. To do plotting on another monitor you will probably have to set both the device and term variables. (If device is set to the name of a file, nutmeg will dump the graphics control codes into this file -- this is useful for saving plots.)
 echo Print out each command before it is executed.
 filetype This can be either ascii or binary, and determines what the format of rawfiles will be. The default is ascii.
-fourgridsize 
+fourgridsize
 How many points to use for interpolating into when doing fourier analysis.
 gridsize If this variable is set to an integer, this number will be used as the number of equally spaced points to use for the Y-axis when plotting. Otherwise the current scale will be used (which may not have equally spaced points). If the current scale isn't strictly monotonic, then this option will have no effect.
-hcopydev 
+hcopydev
 If this is set, when the hardcopy command is run the resulting file is automatically printed on the printer named hcopydev with the command lpr -Phcopydev -g file.
-hcopydevtype 
+hcopydevtype
 This variable specifies the type of the printer output to use in the hardcopy command. If hcopydevtype is not set, plot (5) format is assumed. The standard distribution currently recognizes postscript as an alternative output format. When used in conjunction with hcopydev, hcopydevtype should specify a format supported by the printer.
 height The length of the page for asciiplot and print col.
 history The number of events to save in the history list.
 nfreqs The number of frequencies to compute in the fourier command. (Defaults to 10.)
-nobreak 
+nobreak
 Don't have asciiplot and print col break between pages.
-noasciiplotvalue 
+noasciiplotvalue
 Don't print the first vector plotted to the left when doing an asciiplot.
-noclobber 
+noclobber
 Don't overwrite existing files when doing IO redirection.
 noglob Don't expand the global characters `*', `?', `[', and `]'. This is the default.
 nogrid Don't plot a grid when graphing curves (but do label the axes).
-nomoremode 
+nomoremode
 If nomoremode is not set, whenever a large amount of data is being printed to the screen (e.g, the print or asciiplot commands), the output will be stopped every screenful and will continue when a carriage return is typed. If nomoremode is set then data will scroll off the screen without hesitation.
-nonomatch 
+nonomatch
 If noglob is unset and a global expression cannot be matched, use the global characters literally instead of complaining.
 nosort Don't have display sort the variable names.
-noprintscale 
+noprintscale
 Don't print the scale in the leftmost column when a print col command is given.
 numdgt The number of digits to print when printing tables of data (fourier, print col). The default precision is 6 digits. On the VAX, approximately 16 decimal digits are available using double precision, so numdgt should not be more than 16. If the number is negative, one fewer digit is printed to ensure constant widths in tables.
-plottype 
+plottype
 This should be one of normal, comb, or point:chars. normal, the default, causes points to be plotted as parts of connected lines. comb causes a comb plot to be done (see the description of the combplot variable above). point causes each point to be plotted seperately the chars are a list of characters that will be used for each vector plotted. If they are omitted then a default set is used.
-polydegree 
+polydegree
 The degree of the polynomial that the plot command should fit to the data. If polydegree is N, then nutmeg will fit a degree N polynomial to every set of N points and draw 10 intermediate points in between each endpoint. If the points aren't monotonic, then it will try rotating the curve and reducing the degree until a fit is achieved.
-polysteps 
+polysteps
 The number of points to interpolate between every pair of points available when doing curve fitting. The default is 10. (This should really be done automatically.)
 program The name of the current program (argv[0]).
 prompt The prompt, with the character `!' replaced by the current event number.
 rawfile The default name for rawfiles created.
 reltol The relative tolerance used by the diff command.
 rhost The machine to use for remote SPICE-3 runs, instead of the default one. (See the description of the rspice command, below.)
-rprogram 
+rprogram
 The name of the remote program to use in the rspice command.
-slowplot 
+slowplot
 Stop between each graph plotted and wait for the user to type return before continuing.
-sourcepath 
+sourcepath
 A list of the directories to search when a source command is given. The default is the current directory and the standard spice library (/usr/local/lib/spice, or whatever LIBPATH is #defined to in the \\*S source.
-spicepath 
+spicepath
 The program to use for the aspice command. The default is /cad/bin/spice.
 term The mfb name of the current terminal.
 units If this is degrees, then all the trig functions will use degrees instead of radians.
@@ -550,34 +552,34 @@ unixcom If a command isn't defined, try to execute it as a UNIX command. Setting
 verbose Be verbose. This is midway between echo and debug / cpdebug.
 vnto The absolute voltage tolerance used by the diff command.
 width The width of the page for asciiplot and print col.
-xbrushheight 
+xbrushheight
 The height of the brush to use if X is being run.
-xbrushwidth 
+xbrushwidth
 The width of the brush to use if X is being run.
 xfont The name of the X font to use when plotting data and entering labels. The plot may not look entirely great if this is a variable-width font.
-unset [word] ... 
+unset [word] ...
 Unset the variables word.
-shift [varname] [number] 
+shift [varname] [number]
 If varname is the name of a list variable, it is shifted to the left by number elements. (I.e, the number leftmost elements are removed.) The default varname is argv, and the default number is 1.
 rusage [resource ...] Print resource usage statistics. If any resources are given, just print the usage of that resource. Currently valid resources are:
 elapsed The amount of time elapsed since the last rusage elaped call.
 faults Number of page faults and context switches (BSD only).
 space Data space used.
 time CPU time used so far.
-everything 
+everything
 All of the above.
-cd [directory] 
+cd [directory]
 Change the current working directory to directory, or to the user's home directory if none is given.
-aspice [output-file] 
+aspice [output-file]
 Start a SPICE-3 run, and when it is finished load the data. The raw data is kept in a temporary file. If output-file is specified then the diagnostic output is directed into that file, otherwise it is thrown away.
 jobs Report on the asynchronous SPICE-3 jobs currently running. Nutmeg checks to see if the jobs are finished every time you execute a command. If it is done then the data is loaded and becomes available.
-rspice [input file] 
+rspice [input file]
 Runs a SPICE-3 remotely taking the input file as a SPICE-3 input deck, or the current circuit if no argument is given. Nutmeg waits for the job to complete, and passes output from the remote job to the user's standard output. When the job is finished the data is loaded in as with aspice. If the variable rhost is set, nutmeg will connect to this host instead of the default remote SPICE-3 server machine. Note that this command will only work if your system administrator is running a SPICE-3 daemon on the remote host. If the variable rprogram is set, then rspice will use this as the pathname to the program to run.
-echo [stuff...] 
+echo [stuff...]
 Echos the arguments.
-fourier fundamental_frequency [value ...] 
+fourier fundamental_frequency [value ...]
 Does a fourier analysis of each of the given values, using the first 10 multiples of the fundamental frequency (or the first nfreqs, if that variable is set see below). The output is like that of the .four \\*S card. The values may be any valid expression. The values are interpolated onto a fixed-space grid with the number of points given by the fourgridsize variable, or 200 if it is not set. The interpolation will be of degree polydegree if that variable is set, or 1. If polydegree is 0, then no interpolation will be done. This is likely to give erroneous results if the time scale is not monotonic, though.
-version [version id] 
+version [version id]
 Print out the version of nutmeg that is running. If there are arguments, it checks to make sure that the arguments match the current version of SPICE. (This is mainly used as a Command: line in rawfiles.)
 rehash Recalculate the internal hash tables used when looking up UNIX commands, and make all UNIX commands in the user's PATH available for command completion. This is useless unless you have set unixcom first (see above).
 The following control structures are available:
@@ -657,5 +659,24 @@ You may type multiple commands on one line, seperated by semicolons.
 If you want to use a different mfbcap file than the default (usually ~cad/lib/mfbcap), you have to set the environment variable MFBCAP before you start nutmeg. The -m option and the mfbcap variable no longer work.
 '''
 
+
+class MainFrame(ui.MainFrame):
+  def __init__(self):
+    ui.MainFrame.__init__(self, None)
+    self.SetTitle("PySpyce Circuit Simulator")
+    icon = wx.Icon('pyspyce_logo_2.ico', wx.BITMAP_TYPE_ICO)
+    self.SetIcon(icon)
+
+
+
 if __name__ == '__main__':
-  pass # todo add test code
+  import ctypes
+  myappid = 'mycompany.myproduct.subproduct.version' # arbitrary string
+  ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+
+  app = wx.App()
+
+
+  frame = MainFrame()
+  frame.Show()
+  app.MainLoop()
