@@ -664,14 +664,14 @@ class MainFrame(ui.MainFrame):
   def __init__(self):
     ui.MainFrame.__init__(self, None)
     self.SetTitle("PySpyce Circuit Simulator")
-    icon = wx.Icon('pyspyce_logo_2.ico', wx.BITMAP_TYPE_ICO)
+    icon = wx.Icon('Artwork/pyspyce256.ico', wx.BITMAP_TYPE_ICO)
     self.SetIcon(icon)
 
 
 
 if __name__ == '__main__':
   import ctypes
-  myappid = 'mycompany.myproduct.subproduct.version' # arbitrary string
+  myappid = 'pyspyce'
   ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
   app = wx.App()
