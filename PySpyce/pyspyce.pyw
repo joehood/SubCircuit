@@ -23,9 +23,7 @@ import math
 import cmath
 import numpy
 import sympy
-import wx
-import ui
-import editor
+import sys, os
 from circuit import *
 from interfaces import *
 from devices import *
@@ -35,6 +33,9 @@ from simulator import *
 v = sympy.symbols('v')
 active_circuit = None
 active_simulator = None
+
+integrated_mode = False
+plot_notebook = None
 
 # There are several set variables that SPICE3 uses but nutmeg does not. They are:
 editor = None    # The editor to use for the edit command.
@@ -51,6 +52,15 @@ subend = None    # The card to end subcircuits (normally .ends).
 subinvoke = None # The prefix to invoke subcircuits (normally x).
 substart = None  # The card to begin subcircuits (normally .subckt).
 
+#======================== HOUSEKEEPING UTILITIES ===============================
+
+def set_integrated_mode(set):
+  global integrated_mode
+  integrated_mode = set
+
+def set_plot_notebook(notebook):
+  global plot_notebook
+  plot_notebook = notebook
 
 #========================== NETLIST FUNCTIONS ==================================
 '''
@@ -116,7 +126,11 @@ def plot(pltype, *variables):
   active simulator.
   '''
   if active_circuit and active_simulator:
-    active_simulator.plot(pltype, *variables)
+    if integrated_mode:
+      active_simulator.plot(pltype, *variables, notebook=plot_notebook)
+    else:
+      active_simulator.plot(pltype, *variables)
+    
 
 def clear():
   '''
@@ -660,23 +674,4 @@ If you want to use a different mfbcap file than the default (usually ~cad/lib/mf
 '''
 
 
-class MainFrame(ui.MainFrame):
-  def __init__(self):
-    ui.MainFrame.__init__(self, None)
-    self.SetTitle("PySpyce Circuit Simulator")
-    icon = wx.Icon('Artwork/pyspyce256.ico', wx.BITMAP_TYPE_ICO)
-    self.SetIcon(icon)
 
-
-
-if __name__ == '__main__':
-  import ctypes
-  myappid = 'pyspyce'
-  ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-
-  app = wx.App()
-
-
-  frame = MainFrame()
-  frame.Show()
-  app.MainLoop()

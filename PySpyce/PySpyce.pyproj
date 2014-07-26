@@ -5,7 +5,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>dcf0aa45-f466-4217-b158-2a768db5d388</ProjectGuid>
     <ProjectHome>.</ProjectHome>
-    <StartupFile>pyspyce.pyw</StartupFile>
+    <StartupFile>wxpyspyce.py</StartupFile>
     <SearchPath>
     </SearchPath>
     <WorkingDirectory>.</WorkingDirectory>
@@ -28,12 +28,14 @@
   <ItemGroup>
     <Compile Include="circuit.py" />
     <Compile Include="devices.py" />
-    <Compile Include="editor.py" />
     <Compile Include="examples.py" />
     <Compile Include="interfaces.py" />
     <Compile Include="pyspyce.pyw" />
     <Compile Include="simulator.py" />
     <Compile Include="ui.py" />
+    <Compile Include="wxpyspyce.py">
+      <SubType>Code</SubType>
+    </Compile>
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Artwork\" />

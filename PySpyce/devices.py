@@ -68,6 +68,7 @@ class R(Device):
 
 
 class C(Device):
+  '''SPICE capacitor device'''
   def __init__(self, name, node1, node2, value, mname=None, l=None, w=None, ic=None):
     '''General form:
     CXXXXXXX N+ N- VALUE <IC=INCOND>
@@ -132,7 +133,21 @@ class C(Device):
 
 
 class L(Device, CurrentSensor):
+  '''SPICE Inductor Device'''
   def __init__(self, name, node1, node2, internal, value, ic=None):
+    '''
+    General form:
+    LYYYYYYY N+ N- VALUE <IC=INCOND>
+    Examples:
+    LLINK 42 69 1UH
+    LSHUNT 23 51 10U IC=15.7MA
+    N+ and N- are the positive and negative element nodes, respectively. VALUE is the 
+    inductance in Henries.
+    The (optional) initial condition is the initial (time-zero) value of inductor
+    current (in Amps) that flows from N+, through the inductor, to N-. Note that the
+    initial conditions (if any) apply only if the UIC option is specified on the
+    .TRAN analysis line.
+    '''
     Device.__init__(self, name, 3)
     self.nodes = [node1, node2, internal]
     self.node2port = {node1:0, node2:1, internal:2}
@@ -152,7 +167,46 @@ class L(Device, CurrentSensor):
 
 
 class K(Device):
-  pass # todo
+  def __init__(self, name, l1name, l2name, value):
+    '''
+    Coupled (Mutual) Inductors
+
+    General form:
+    KXXXXXXX LYYYYYYY LZZZZZZZ VALUE
+    Examples:
+    K43 LAA LBB 0.999
+    KXFRMR L1 L2 0.87
+    LYYYYYYY and LZZZZZZZ are the names of the two coupled inductors, and VALUE is
+    the coefficient of coupling, K, which must be greater than 0 and less than or
+    equal to 1. Using the 'dot' convention, place a 'dot' on the first node of each
+    inductor.
+    '''
+    Device.__init__(self, name, 6)
+    self.name = name
+    self.value = value
+    self.l1name = l1name
+    self.l2name = l2name
+    
+  
+  def setup(self, dt):
+    inductor1 = self.subcircuit.devices[self.l1name]
+    inductor2 = self.subcircuit.devices[self.l2name]
+    self.node11, self.node12, self.internal1 = inductor1.nodes
+    self.node21, self.node22, self.internal2 = inductor2.nodes
+    self.nodes = [self.node11, self.node12, self.internal1, self.node21, self.node22, self.internal2]
+    self.node2port = {self.node11:0, self.node12:1, self.internal1:2, 
+                      self.node21:3, self.node22:4, self.internal2:5}
+    self.inductance1 = self.subcircuit.devices[self.l1name].value
+    self.inductance2 = self.subcircuit.devices[self.l2name].value
+    self.mutual = self.value * math.sqrt(self.inductance1 * self.inductance2)
+    self.jacobian[2, 5] = -self.mutual / dt
+    self.jacobian[5, 2] = -self.mutual / dt
+
+  def step(self, dt):
+    current1 = self.subcircuit.across_history[self.internal1]
+    current2 = self.subcircuit.across_history[self.internal2]
+    self.bequiv[2] = self.mutual / dt * current2
+    self.bequiv[5] = self.mutual / dt * current1
 
 
 class S(Device):
@@ -219,6 +273,7 @@ class V(Device, CurrentSensor):
     self.nodes = [node1, node2, internal]
     self.node2port = {node1:0, node2:1, internal:2}
 
+    self.stimulus = None
     if isinstance(value, Stimulus):
       self.stimulus = value
       self.stimulus.device = self

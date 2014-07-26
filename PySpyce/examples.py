@@ -37,11 +37,34 @@ def example3():
   trans(0.0001, 0.04)
   plot('tran', Voltage(2, 3), Voltage(5, 4), Current('V1'))
 
+def example4():
+  '''
+         R1
+   1.---VVV---.2     3.-------.
+    |         |<- K ->|       >
+   .'.        )       (       >R2
+  ( V )5     6)L1   L2(       >
+   '.'        )       (       | 4
+    |         |       |     (VS )
+    '---------'0     0'-------'
+  '''
+  title('Mutual Inductance Test')
+  device('V1', V, 1, 0, 5, Sin(0.0, 10.0, 100.0))
+  device('R1', R, 1, 2, 0.01)
+  device('L1', L, 2, 0, 6, 0.001)
+  device('L2', L, 3, 0, 7, 0.002)
+  device('K1', K, 'L1', 'L2', 1.1)
+  device('R2', R, 3, 4, 10.0)
+  device('VS', V, 0, 4, 8, 0.0)
+  trans(0.0001, 0.05)
+  plot('tran', Voltage(1), Voltage(3), Current('V1'), Current('VS'))
+
 
 
 #example1()
 #example2()
-example3()
+#example3()
+example4()
 
 
 

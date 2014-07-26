@@ -6,16 +6,20 @@ import numpy
 import sympy
 import numpy.linalg as la
 
+'''
+brainstorming: node mapping:
+different node ids:
+user visible:
+
+'''
+
 
 #========================= CLASSES =============================
 
 class SubCircuit():
-  '''
-  A SPICE subcircuit (.subckt) object. 
-  '''
+  '''A SPICE subcircuit (.subckt) object. '''
   def __init__(self, parent, name=None):
-    '''
-    Creates an empty SubCircuit.
+    '''Creates an empty SubCircuit.
 
     Arguments:
     parent -- the parent circuit or subcircuit.
@@ -29,8 +33,7 @@ class SubCircuit():
     self.simulator = None
 
   def stamp(self):
-    '''
-    Creates matrix stamps for the subcircuit network scope by stamping the
+    '''Creates matrix stamps for the subcircuit network scope by stamping the
     devices together that belong to this subcircuit.
     '''
     self.jacobian[:,:] = 0.0
@@ -44,13 +47,16 @@ class SubCircuit():
           self.jacobian[nodei, nodej] = self.jacobian[nodei, nodej] + device.jacobian[portj, porti]
 
   def setup(self, dt):
-    '''
-    Calls setup() on all of this subcircuit devices. Setup is called at the beginning
+    '''Calls setup() on all of this subcircuit devices. Setup is called at the beginning
     of the simulation and allows the intial stamps to be applied.
     '''
+    # determine node size:
     self.dt = dt
     for name, device in self.devices.items():
       device.setup(dt)
+      highest_node = max(device.nodes) # increment the subcircuit nodes as needed
+      self.nodes = max(self.nodes, highest_node + 1)
+
     self.across = numpy.zeros(self.nodes)
     self.across_last = numpy.zeros(self.nodes)
     self.across_history = numpy.zeros(self.nodes)
@@ -61,8 +67,7 @@ class SubCircuit():
     self.stamp()
 
   def step(self, dt):
-    '''
-    Called at each timestep.
+    '''Called at each timestep.
     Arguments:
     dt -- the timestep value (sec)
     '''
@@ -77,8 +82,7 @@ class SubCircuit():
     
 
   def minor_step(self, dt):
-    '''
-    Called before each Newton iteration.
+    '''Called before each Newton iteration.
     TODO: optimize for linear networks!!!
     '''
     
@@ -101,16 +105,14 @@ class SubCircuit():
 
 
   def add_device(self, device):
-    '''
-    Adds a device to the subcircuit.
+    '''Adds a device to the subcircuit.
     Arguments:
     device -- the Device to add.
     '''
     device.subcircuit = self
     if not device.name in self.devices: # if the name is unique (not found in device dict)
       self.devices[device.name] = (device) # add the device with it's name as the key
-      highest_node = max(device.nodes) # increment the subcircuit nodes as needed
-      self.nodes = max(self.nodes, highest_node + 1)
+      
     else:
       # TODO: throw duplicate device name exception (or auto-name?)
       # no, can't auto-name because user needs to use key to index
@@ -118,8 +120,7 @@ class SubCircuit():
 
 
 class Circuit(SubCircuit):
-  '''
-  A SPICE circuit object. There can only be one circuit in a network. The
+  '''A SPICE circuit object. There can only be one circuit in a network. The
   circuit is a special type of SubCircuit and Circuit derives from the base
   class SubCircuit. The network circuit differs from the other SubCircuits in
   the following ways:
@@ -134,31 +135,25 @@ class Circuit(SubCircuit):
       SPICE3-compliant netlists.
   '''
   def __init__(self):
-    '''
-    Creates a circuit object.
-    '''
+    '''Creates a circuit object.'''
     SubCircuit.__init__(self, parent=None)
     self.models = {}
     self.title1 = ''
     self.title2 = ''
 
   def add_model(self, model):
-    '''
-    Add a model (.model) definition to the Circuit.
-    '''
+    '''Add a model (.model) definition to the Circuit.'''
     self.models[model.name] = model
 
   def from_spice(self, filepath):
-    '''
-    Imports the contents of a SPICE3-compliant circuit definition.
+    '''Imports the contents of a SPICE3-compliant circuit definition.
     Arguments:
     filepath -- the path of the file to import. 
     '''
     pass
 
   def to_spice(self, filepath):
-    '''
-    Exports this circuit definition to a SPICE3-compliant file.
+    '''Exports this circuit definition to a SPICE3-compliant file.
     Arguments:
     filepath -- the path of the file to export to. 
     '''

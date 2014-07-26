@@ -49,6 +49,16 @@ class Device():
     else:
       return None
 
+  def get_across(self, port1, port2=None):
+    '''Get the across value between the nodes to which the given ports are attached. 
+    If port2 is not provided, the across value returned is the across value of port1's
+    node with respect to ground.
+    '''
+    across = self.subcircuit.across_history[self.nodes[port1]]
+    if port2:
+      across -= self.subcircuit.across_history[self.nodes[port2]]
+    return across
+
   def setup(self, dt):
     '''Virtual method. Must be implemented by derived class.
     Called at the beginning of the simulation before the parent subcircuit's

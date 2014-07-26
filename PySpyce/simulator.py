@@ -7,10 +7,11 @@ Contains the functions for analysis and simulation of a provided SPICE network.
 import numpy
 import sympy
 import matplotlib.pyplot as plt
+import wx
+import wxpyspyce
 from circuit import *
 from devices import *
 from interfaces import *
-
 
 # ============================== PLOTABLES ===================================
 
@@ -19,12 +20,9 @@ class Plotable:
 
 
 class Voltage(Plotable):
-  '''
-  Represents a plottable voltage value.
-  '''
+  '''Represents a plottable voltage value.'''
   def __init__(self, node1, node2=0):
-    '''
-    Creates a new plottable voltage object.
+    '''Creates a new plottable voltage object.
     Arguments:
     node1 -- The circuit node for the positive voltage
     node2 -- The optional circuit node for the negative voltage (0 [ground] by default)
@@ -34,12 +32,9 @@ class Voltage(Plotable):
 
 
 class Current(Plotable):
-  '''
-  Represents a plottable current value.
-  '''
+  '''Represents a plottable current value.'''
   def __init__(self, vsource):
-    '''
-    Creates a new plottable cuurent object.
+    '''Creates a new plottable cuurent object.
     Arguments:
     vsource -- The name of the current-providing device.
     '''
@@ -50,8 +45,7 @@ class Current(Plotable):
 
 
 class Simulator():
-  '''
-  Represents a SPICE simulator and provides the functions for SPICE simulation
+  '''Represents a SPICE simulator and provides the functions for SPICE simulation
   and analysis.
   '''
   def __init__(self, circuit, maxitr=100, tol=0.001):
@@ -167,10 +161,10 @@ class Simulator():
   def _print(self): # must be _print to avoid collisions with Python builtin print
     pass
 
-  def plot(self, pltype, *variables):
+  def plot(self, pltype, *variables, **kwargs):
     '''.PLOT Lines
     General form:
-    .PLOT PLTYPE OV1 <(PLO1, PHI1)> &ltOV2; <(PLO2, PHI2)> ... OV8>
+    .PLOT PLTYPE OV1 <(PLO1, PHI1)> <OV2; <(PLO2, PHI2)> ... OV8>
     Examples:
     .PLOT DC V(4) V(5) V(1)
     .PLOT TRAN V(17, 5) (2, 5) I(VIN) V(17) (1, 9)
@@ -188,7 +182,13 @@ class Simulator():
     There is no limit on the number of .PLOT lines specified for each type of
     analysis.
     '''
+    notebook = None
+    if 'notebook' in kwargs:
+      notebook = kwargs['notebook']
+    plot_panel = None
+
     if pltype.lower() == 'tran': # If the plot type is transient. (TODO: other types)
+      curves = []
       for variable in variables: # for each plottable variable:
         trace = None
         label = ''
@@ -204,13 +204,24 @@ class Simulator():
             trace = -self.trans_data[sensor_device.get_current_node(),:]
             label = 'I({0})'.format(variable.vsource)
         if trace is not None:
-          plt.plot(self.trans_time, trace, label=label)# crate a matplotlib plot
+          curves.append((self.trans_time, trace, label))
+          
+      if notebook:
+        plot_panel = wxpyspyce.PlotPanel(notebook)
+        notebook.AddPage(plot_panel, 'Plot', True)
+        plot_panel.set_data(curves)
+        plot_panel.draw()
 
-      plt.title(self.circuit.title1)
-      plt.legend()
-      plt.show()
+      else:
+        for curve in curves:
+          x, y, label = curve
+          plt.plot(x, y, label=label)# crate a matplotlib plot
+          plt.title(self.circuit.title1)
+          plt.legend()
+          plt.xlabel('t (s)')
+          plt.show()
 
-    pass
+    return plot_panel
 
   def four(self):
     '''
