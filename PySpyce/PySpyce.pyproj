@@ -28,7 +28,10 @@
   <ItemGroup>
     <Compile Include="circuit.py" />
     <Compile Include="devices.py" />
-    <Compile Include="examples.py" />
+    <Compile Include="Examples\examples.py" />
+    <Compile Include="Examples\full_wave_rectifier.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="interfaces.py" />
     <Compile Include="pyspyce.pyw" />
     <Compile Include="simulator.py" />
@@ -39,6 +42,7 @@
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Artwork\" />
+    <Folder Include="Examples\" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Artwork\pyspyce256.ico" />

@@ -115,7 +115,7 @@ class MainFrame(ui.MainFrame):
     self.SetIcon(icon)
     self.debugger = Debugger()
 
-    self.script = 'examples.py'
+    self.script = 'Examples/full_wave_rectifier.py'
 
     # add editor:
     self.editor = Editor(self.pnl_editor, 0, self.script)
