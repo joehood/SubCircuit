@@ -18,8 +18,8 @@ def example2():
   device('D1', D, 2, 3, 'Diode1')
   device('R2', R, 3, 0, 2.0)
   device('C1', C, 3, 0, 0.01)
-  model('Diode1', DMOD, IS=1.0e-9)
-  trans(0.0002, 0.05)
+  model('Diode1', DMod, IS=1.0e-9)
+  trans(0.0002, 0.1)
   plot('tran', Voltage(1), Voltage(3))
 
 def example3():
@@ -60,10 +60,16 @@ def example4():
   plot('tran', Voltage(1), Voltage(3), Current('V1'), Current('VS'))
 
 
+clear()
+example1()
 
-#example1()
-#example2()
-#example3()
+clear()
+example2()
+
+clear()
+example3()
+
+clear()
 example4()
 
 

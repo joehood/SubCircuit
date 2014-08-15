@@ -134,8 +134,9 @@ def plot(pltype, *variables):
 
 def clear():
   '''
-  Removes active circuit and active simulator from workspace.
+  Removes active circuit and active simulator.
   '''
+  global active_circuit, active_simulation
   active_circuit = None
   active_simulation = None
 

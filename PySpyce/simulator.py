@@ -218,6 +218,7 @@ class Simulator():
         plot_panel.draw()
 
       else:
+        plt.figure()
         for curve in curves:
           x, y, label = curve
           plt.plot(x, y, label=label)# crate a matplotlib plot
