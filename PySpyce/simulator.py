@@ -7,8 +7,13 @@ Contains the functions for analysis and simulation of a provided SPICE network.
 import numpy
 import sympy
 import matplotlib.pyplot as plt
-import wx
-import wxpyspyce
+
+try:
+  import wx
+  import wxpyspyce
+except:
+  pass
+
 from circuit import *
 from devices import *
 from interfaces import *
