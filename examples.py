@@ -7,9 +7,9 @@ import pyspyce as ps
 # circuit.add_device(ps.V, 1, 0, 4, ps.Sin(0.0, 1.0, 100.0))
 # circuit.add_device('R1', ps.R, 1, 2, 1.0)
 # circuit.add_device('L1', ps.L, 2, 3, 5, 0.01, ic=0.0)
-#   circuit.add_device('C1', ps.C, 3, 0, 0.001, ic=0.0)
+# circuit.add_device('C1', ps.C, 3, 0, 0.001, ic=0.0)
 #
-#   simulator = ps.Simulator(circuit)
+# simulator = ps.Simulator(circuit)
 #   simulator.trans(0.0005, 0.05)
 #   simulator.plot('tran', ps.Voltage(2), ps.Voltage(3), ps.Current('V1'))
 #
@@ -60,9 +60,10 @@ import pyspyce as ps
 
 circuit = ps.Circuit()
 circuit.title = 'Diode Test'
-circuit.add_device(ps.V('V1', 1, 0, 2, ps.Pwl([0.0, 0.0], [1.0, 0.0], [1.01, 0.6], [2.0, 0.6], [2.01, 0.0])))
-circuit.add_device(ps.D('D1', 1, 0, 'Diode1'))
 circuit.add_model(ps.DMod('Diode1', IS=1.0e-9))
+circuit.add_device(ps.V('V1', 1, 0, 2, ps.Pulse(v1=0.0, v2=1.0, td=0.1, tr=0.1, tf=0.2, pw=0.5, per=1.0)))
+circuit.add_device(ps.D('D1', 1, 3, 'Diode1'))
+circuit.add_device(ps.R('R1', 3, 0, value=1.0))
 simulator = ps.Simulator(circuit)
 simulator.trans(0.02, 4.0)
 simulator.plot('tran', ps.Voltage(1), ps.Current('V1'))

@@ -48,15 +48,15 @@ substart = None  # The card to begin subcircuits (normally .subckt).
 # ======================== HOUSEKEEPING UTILITIES ===============================
 
 def set_integrated_mode(set):
-  global integrated_mode
-  integrated_mode = set
+    global integrated_mode
+    integrated_mode = set
 
 
 def set_plot_notebook(notebook):
-  global plot_notebook
-  plot_notebook = notebook
+    global plot_notebook
+    plot_notebook = notebook
 
-#========================== NETLIST FUNCTIONS ==================================
+# ========================== NETLIST FUNCTIONS ==================================
 '''
 These are module-level functions that allow one to create a netlist module
 without explicitly creating objects, thus making the netlist definition look
@@ -67,372 +67,372 @@ multiple circuit and simulator instances in the same netlist module.
 
 
 def title(line1, line2=''):
-  """
-  Adds titles to the active circuit. If no active circuit exists,
-  one is created.
-  """
-  global active_circuit
-  if not active_circuit:
-    active_circuit = Circuit()
-  active_circuit.title = line1
-  active_circuit.title2 = line2
+    """
+    Adds titles to the active circuit. If no active circuit exists,
+    one is created.
+    """
+    global active_circuit
+    if not active_circuit:
+        active_circuit = Circuit()
+    active_circuit.title = line1
+    active_circuit.title2 = line2
 
 
 def device(name, cls, *args, **kwargs):
-  """
-  Adds a device to the active circuit. If no active circuit exists,
-  one is created.
-  """
-  global active_circuit
-  device = cls(name, *args, **kwargs)
-  if not active_circuit:
-    active_circuit = Circuit()
-  active_circuit.add_device(device)
+    """
+    Adds a device to the active circuit. If no active circuit exists,
+    one is created.
+    """
+    global active_circuit
+    device = cls(name, *args, **kwargs)
+    if not active_circuit:
+        active_circuit = Circuit()
+    active_circuit.add_device(device)
 
 
 def model(name, cls, **kwargs):
-  """
-  Adds a model to the active circuit. If no active circuit exists,
-  one is created.
-  """
-  global active_circuit
-  model = cls(name, **kwargs)
-  if not active_circuit:
-    active_circuit = Circuit()
-  active_circuit.add_model(model)
+    """
+    Adds a model to the active circuit. If no active circuit exists,
+    one is created.
+    """
+    global active_circuit
+    model = cls(name, **kwargs)
+    if not active_circuit:
+        active_circuit = Circuit()
+    active_circuit.add_model(model)
 
 
 def trans(tstep, tstop, start=None, stop=None, uic=False):
-  """
-  Runs a transient simulation using the active circuit and active
-  simulator. If no active simulator exists, one is created. This
-  function cannot run a simulation without a previously defined
-  active circuit.
-  """
-  global active_simulator
-  if active_circuit:
-    if not active_simulator:
-      active_simulator = Simulator(active_circuit)
-    active_simulator.trans(tstep, tstop, start, stop, uic)
-  else:
-    # TODO: no circuit to simulate error
-    pass
+    """
+    Runs a transient simulation using the active circuit and active
+    simulator. If no active simulator exists, one is created. This
+    function cannot run a simulation without a previously defined
+    active circuit.
+    """
+    global active_simulator
+    if active_circuit:
+        if not active_simulator:
+            active_simulator = Simulator(active_circuit)
+        active_simulator.trans(tstep, tstop, start, stop, uic)
+    else:
+        # TODO: no circuit to simulate error
+        pass
 
 
 def plot(pltype, *variables):
-  """
-  Plots the requested circuit variables. Requires an active circuit and an
-  active simulator.
-  """
-  if active_circuit and active_simulator:
-    if integrated_mode:
-      active_simulator.plot(pltype, *variables, notebook=plot_notebook)
-    else:
-      active_simulator.plot(pltype, *variables)
+    """
+    Plots the requested circuit variables. Requires an active circuit and an
+    active simulator.
+    """
+    if active_circuit and active_simulator:
+        if integrated_mode:
+            active_simulator.plot(pltype, *variables, notebook=plot_notebook)
+        else:
+            active_simulator.plot(pltype, *variables)
 
 
 def clear():
-  """
-  Removes active circuit and active simulator.
-  """
-  global active_circuit, active_simulation
-  active_circuit = None
-  active_simulation = None
+    """
+    Removes active circuit and active simulator.
+    """
+    global active_circuit, active_simulation
+    active_circuit = None
+    active_simulation = None
 
 
-#=========================== SPICE3 COMMANDS ===================================
+# =========================== SPICE3 COMMANDS ===================================
 
 def setcirc(name):
-  """Change the current circuit. The current circuit is the one that is used for
-  the simulation commands below. When a circuit is loaded with the source
-  function it becomes the current circuit.
-  """
-  pass
+    """Change the current circuit. The current circuit is the one that is used for
+    the simulation commands below. When a circuit is loaded with the source
+    function it becomes the current circuit.
+    """
+    pass
 
 
 def op(*args):
-  """Do an operating point analysis."""
-  pass
+    """Do an operating point analysis."""
+    pass
 
 
 def tran(*args):
-  """Do a transient analysis."""
-  pass
+    """Do a transient analysis."""
+    pass
 
 
 def ac(*args):
-  """Do an ac analysis."""
-  pass
+    """Do an ac analysis."""
+    pass
 
 
 def dc(*args):
-  """Do a dc transfer curve analysis."""
-  pass
+    """Do a dc transfer curve analysis."""
+    pass
 
 
 def listing(type='logical'):
-  """ type may be: 'logical', 'physical', 'deck', or 'expand'.
-  Print a listing of the current circuit. If the logical argument is given,
-  the listing is with all continuation lines collapsed into one line, and if
-  the physical argument is given the lines are printed out as they were found
-  in the file. The default is logical. A deck listing is just like the physical
-  listing, except without the line numbers it recreates the input file verbatim
-  (except that it does not preserve case). If the word expand is present, the
-  circuit will be printed with all subcircuits expanded.
-  """
-  pass
+    """ type may be: 'logical', 'physical', 'deck', or 'expand'.
+    Print a listing of the current circuit. If the logical argument is given,
+    the listing is with all continuation lines collapsed into one line, and if
+    the physical argument is given the lines are printed out as they were found
+    in the file. The default is logical. A deck listing is just like the physical
+    listing, except without the line numbers it recreates the input file verbatim
+    (except that it does not preserve case). If the word expand is present, the
+    circuit will be printed with all subcircuits expanded.
+    """
+    pass
 
 
 def edit(file):
-  """Print the current SPICE3 deck into a file, call up the editor on that file
-  and allow the user to modify it, and then read it back in, replacing the
-  origonal deck. If a filename is given, then edit that file and load it, making
-  the circuit the current one.
-  """
-  pass
+    """Print the current SPICE3 deck into a file, call up the editor on that file
+    and allow the user to modify it, and then read it back in, replacing the
+    origonal deck. If a filename is given, then edit that file and load it, making
+    the circuit the current one.
+    """
+    pass
 
 
 def resume():
-  """Resume a simulation after a stop."""
-  pass
+    """Resume a simulation after a stop."""
+    pass
 
 
 def show():
-  """Show a device parameter."""
-  pass
+    """Show a device parameter."""
+    pass
 
 
 def alter():
-  """Alter a device parameter."""
-  pass
+    """Alter a device parameter."""
+    pass
 
 
 def state():
-  """Print the state of the circuit. (This command is largely unimplemented.)"""
-  pass
+    """Print the state of the circuit. (This command is largely unimplemented.)"""
+    pass
 
 
 def save(all, output):
-  """Save a set of outputs, discarding the rest. If a node has been mentioned in
-  a save command, it will appear in the working plot after a run has completed,
-  or in the rawfile if spice is run in batch mode. If a node is traced or
-  plotted (see below) it will also be saved. For backward compatibility, if
-  there are no save commands given, all outputs are saved.
-  """
-  pass
+    """Save a set of outputs, discarding the rest. If a node has been mentioned in
+    a save command, it will appear in the working plot after a run has completed,
+    or in the rawfile if spice is run in batch mode. If a node is traced or
+    plotted (see below) it will also be saved. For backward compatibility, if
+    there are no save commands given, all outputs are saved.
+    """
+    pass
 
 
 def stop(condition):
-  """Set a breakpoint. The argument after n means stop after n iteration number
-  n, and the argument when something cond something means stop when the first
-  something is in the given relation with the second something, the possible
-  relations being eq or = (equal to), ne or <> (not equal to), gt or > (greater
-  than), lt or < (less than), ge or >= (greater than or equal to), and le or <=
-  (less than or equal to). IO redirection is disabled for the stop command,
-  since the relational operations conflict with it (it doesn't produce any
-  output anyway). The somethings above may be node names in the running circuit,
-  or real values. If more than one condition is given, e.g. stop after 4 when
-  v(1) > 4 when v(2) < 2, the conjunction of the conditions is implied.
-  """
-  pass
+    """Set a breakpoint. The argument after n means stop after n iteration number
+    n, and the argument when something cond something means stop when the first
+    something is in the given relation with the second something, the possible
+    relations being eq or = (equal to), ne or <> (not equal to), gt or > (greater
+    than), lt or < (less than), ge or >= (greater than or equal to), and le or <=
+    (less than or equal to). IO redirection is disabled for the stop command,
+    since the relational operations conflict with it (it doesn't produce any
+    output anyway). The somethings above may be node names in the running circuit,
+    or real values. If more than one condition is given, e.g. stop after 4 when
+    v(1) > 4 when v(2) < 2, the conjunction of the conditions is implied.
+    """
+    pass
 
 
 def trace(node):
-  """Trace nodes. Every iteration the value of the node is printed to the
-  standard output.
-  """
-  pass
+    """Trace nodes. Every iteration the value of the node is printed to the
+    standard output.
+    """
+    pass
 
 
 def iplot(nodes):
-  """Incrementally plot the values of the nodes while SPICE3 runs."""
-  pass
+    """Incrementally plot the values of the nodes while SPICE3 runs."""
+    pass
 
 
 def step(number):
-  """Iterate number times, or once, and then stop."""
-  pass
+    """Iterate number times, or once, and then stop."""
+    pass
 
 
 def status():
-  """Display all of the traces and breakpoints currently in effect."""
-  pass
+    """Display all of the traces and breakpoints currently in effect."""
+    pass
 
 
 def delete(debug_number):
-  """Delete the specified breakpoints and traces. The debug numbers are those
-  shown by the status command. (Unless you do status > file, in which case the
-  debug numbers aren't printed.)
-  """
-  pass
+    """Delete the specified breakpoints and traces. The debug numbers are those
+    shown by the status command. (Unless you do status > file, in which case the
+    debug numbers aren't printed.)
+    """
+    pass
 
 
 def reset():
-  """Throw out any intermediate data in the circuit (e.g, after a breakpoint or
-  after one or more analyses have been done already), and re-parse the deck. The
-  circuit can then be re-run. (Note: this command used to be end in SPICE 3a5
-  and earlier versions -- end is now used for control structures.) The run
-  command will take care of this automatically, so this command should not be
-  necessary..."""
-  pass
+    """Throw out any intermediate data in the circuit (e.g, after a breakpoint or
+    after one or more analyses have been done already), and re-parse the deck. The
+    circuit can then be re-run. (Note: this command used to be end in SPICE 3a5
+    and earlier versions -- end is now used for control structures.) The run
+    command will take care of this automatically, so this command should not be
+    necessary..."""
+    pass
 
 
 def run(rawfile):
-  """Run the simulation as specified in the input file. If there were any of the
-  control cards .ac, .op, .tran, or .dc, they are executed. The output is put in
-  rawfile if it was given, in addition to being available interactively."""
-  pass
+    """Run the simulation as specified in the input file. If there were any of the
+    control cards .ac, .op, .tran, or .dc, they are executed. The output is put in
+    rawfile if it was given, in addition to being available interactively."""
+    pass
 
 
 def source(file):
-  """Read the SPICE3 input file file. Nutmeg and SPICE3 commands may be included
-  in the file, and must be enclosed between the lines .control and .endc. These
-  commands are executed immediately after the circuit is loaded, so a control
-  line of ac ... will work the same as the corresponding .ac card. The first
-  line in any input file is considered a title line and not parsed but kept as
-  the name of the circuit. The exception to this rule is the file .spiceinit.
-  Thus, a SPICE3 command script must begin with a blank line and then with a
-  .control line. Also, any line beginning with the characters *# is considered a
-  control line. This makes it possible to imbed commands in SPICE3 input files
-  that will be ignored by earlier versions of SPICE. Note: in spice3a7 and
-  before, the .control and .endc lines were not needed, and any line beginning
-  with the name of a front-end command would be executed."""
-  pass
+    """Read the SPICE3 input file file. Nutmeg and SPICE3 commands may be included
+    in the file, and must be enclosed between the lines .control and .endc. These
+    commands are executed immediately after the circuit is loaded, so a control
+    line of ac ... will work the same as the corresponding .ac card. The first
+    line in any input file is considered a title line and not parsed but kept as
+    the name of the circuit. The exception to this rule is the file .spiceinit.
+    Thus, a SPICE3 command script must begin with a blank line and then with a
+    .control line. Also, any line beginning with the characters *# is considered a
+    control line. This makes it possible to imbed commands in SPICE3 input files
+    that will be ignored by earlier versions of SPICE. Note: in spice3a7 and
+    before, the .control and .endc lines were not needed, and any line beginning
+    with the name of a front-end command would be executed."""
+    pass
 
 
 def linearize(vectors):
-  """Create a new plot with all of the vectors in the current plot, or only
-  those mentioned if arguments are given. The new vectors will be interpolated
-  onto a linear time scale, which is determined by the values of tstep, tstart,
-  and tstop in the currently active transient analysis. The currently loaded
-  deck must include a transient analysis (a tran command may be run
-  interactively before the last reset, alternately), and the current plot must
-  be from this transient analysis. This command is needed because SPICE3 doesn't
-  output the results from a transient analysis in the same manner that SPICE2
-  did."""
-  pass
+    """Create a new plot with all of the vectors in the current plot, or only
+    those mentioned if arguments are given. The new vectors will be interpolated
+    onto a linear time scale, which is determined by the values of tstep, tstart,
+    and tstop in the currently active transient analysis. The currently loaded
+    deck must include a transient analysis (a tran command may be run
+    interactively before the last reset, alternately), and the current plot must
+    be from this transient analysis. This command is needed because SPICE3 doesn't
+    output the results from a transient analysis in the same manner that SPICE2
+    did."""
+    pass
 
 
 #============================ NUTMEG FUNCTIONS ==================================
 
 
 def mag(vector):
-  """The magnitude of vector."""
-  pass
+    """The magnitude of vector."""
+    pass
 
 
 def ph(vector):
-  """The phase of vector."""
-  pass
+    """The phase of vector."""
+    pass
 
 
 def j(vector):
-  """i (sqrt(-1)) times vector."""
-  pass
+    """i (sqrt(-1)) times vector."""
+    pass
 
 
 def real(vector):
-  """The real component of vector."""
-  pass
+    """The real component of vector."""
+    pass
 
 
 def imag(vector):
-  """The imaginary part of vector."""
-  pass
+    """The imaginary part of vector."""
+    pass
 
 
 def db(vector):
-  """20 * log10(mag(vector))."""
-  pass
+    """20 * log10(mag(vector))."""
+    pass
 
 
 def log(vector):
-  """The logarithm (base 10) of the vector."""
-  pass
+    """The logarithm (base 10) of the vector."""
+    pass
 
 
 def ln(vector):
-  """The natural logarithm (base e) of vector."""
-  pass
+    """The natural logarithm (base e) of vector."""
+    pass
 
 
 def exp(vector):
-  """e to the vector power."""
-  pass
+    """e to the vector power."""
+    pass
 
 
 def abs(vector):
-  """The absolute value of vector."""
-  pass
+    """The absolute value of vector."""
+    pass
 
 
 def sqrt(vector):
-  """The square root of vector."""
-  pass
+    """The square root of vector."""
+    pass
 
 
 def sin(vector):
-  """The sin of vector."""
-  pass
+    """The sin of vector."""
+    pass
 
 
 def cos(vector):
-  """The cosine of vector."""
-  pass
+    """The cosine of vector."""
+    pass
 
 
 def tan(vector):
-  """The tangent of vector."""
-  pass
+    """The tangent of vector."""
+    pass
 
 
 def atan(vector):
-  """The inverse tangent of vector."""
-  pass
+    """The inverse tangent of vector."""
+    pass
 
 
 #============================ NUTMEG COMMANDS ==================================
 
 def norm(vector):
-  """The vector normalized to 1 (i.e, the largest magnitude of any component
-  will be 1).
-  """
-  pass
+    """The vector normalized to 1 (i.e, the largest magnitude of any component
+    will be 1).
+    """
+    pass
 
 
 def rnd(vector):
-  """A vector with each component a random integer between 0 and the absolute
-  value of the vectors's corresponding component.
-  """
-  pass
+    """A vector with each component a random integer between 0 and the absolute
+    value of the vectors's corresponding component.
+    """
+    pass
 
 
 def mean(vector):
-  """The result is a scalar (a length 1 vector) that is the mean of the elements
-  of vector.
-  """
-  pass
+    """The result is a scalar (a length 1 vector) that is the mean of the elements
+    of vector.
+    """
+    pass
 
 
 def vector(number):
-  """The result is a vector of length number, with elements 0, 1, ... number - 1.
-  If number is a vector then just the first element is taken, and if it isn't an
-  integer then the floor of the magnitude is used.
-  """
-  pass
+    """The result is a vector of length number, with elements 0, 1, ... number - 1.
+    If number is a vector then just the first element is taken, and if it isn't an
+    integer then the floor of the magnitude is used.
+    """
+    pass
 
 
 def length(vector):
-  """The length of vector."""
-  pass
+    """The length of vector."""
+    pass
 
 
 def interpolate(plot_vector):
-  """The result of interpolating the named vector onto the scale of the current
-  plot. This function uses the variable polydegree to determine the degree of
-  interpolation.
-  """
-  pass
+    """The result of interpolating the named vector onto the scale of the current
+    plot. This function uses the variable polydegree to determine the degree of
+    interpolation.
+    """
+    pass
 
 
 '''
