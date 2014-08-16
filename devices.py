@@ -1,30 +1,27 @@
-'''
+"""
 Contains the core (atomic) SPICE circuit element definitios.
-'''
+"""
 
 # =========================== IMPORTS ==============================
 
 import math
-import cmath
-import sympy
-import numpy
-from circuit import *
+
 from interfaces import *
 
-# =========================== GLOBALS ==============================
 
-v = sympy.symbols('v') # used by GenericTwoPort model.
+# =========================== GLOBALS ==============================
 
 
 # ===================== ELEMENTARY DEVICES ==========================
 
 
 class R(Device):
-  '''
+  """
   A SPICE R (resistor or semiconductor resistor) device.
-  '''
+  """
+
   def __init__(self, name, node1, node2, value, rmodel=None, l=None, w=None, temp=None, **kwargs):
-    '''General form:
+    """General form:
     RXXXXXXX N1 N2 VALUE
 
     Examples:
@@ -40,20 +37,20 @@ class R(Device):
     Examples:
     RLOAD 2 10 10K
     RMOD 3 7 RMODEL L=10u W=1u
-    '''
-    Device.__init__(self, name, 2) # call base constructor for 2-port device
-    self.nodes = [node1, node2] # define nodes list
-    self.node2port = {node1:0, node2:1} # define system node to device port mapping
-    self.value = value # store value (resistance in ohms)
+    """
+    Device.__init__(self, name, 2)  # call base constructor for 2-port device
+    self.nodes = [node1, node2]  # define nodes list
+    self.node2port = {node1: 0, node2: 1}  # define system node to device port mapping
+    self.value = value  # store value (resistance in ohms)
 
   def setup(self, dt):
-    '''
+    """
     Define the resistor jacobian stamp.
-    '''
-    if self.value: # if non-zero:
+    """
+    if self.value:  # if non-zero:
       g = 1.0 / self.value
     else:
-      g = 1.0E12 # approximate short circuit for 0-resistance
+      g = 1.0E12  # approximate short circuit for 0-resistance
 
     self.jacobian[0, 0] = g
     self.jacobian[0, 1] = -g
@@ -61,16 +58,17 @@ class R(Device):
     self.jacobian[1, 1] = g
 
   def step(self, dt):
-    '''
+    """
     Do nothing here. Linear and time-invariant device.
-    '''
+    """
     pass
 
 
 class C(Device):
-  '''SPICE capacitor device'''
+  """SPICE capacitor device"""
+
   def __init__(self, name, node1, node2, value, mname=None, l=None, w=None, ic=None):
-    '''General form:
+    """General form:
     CXXXXXXX N+ N- VALUE <IC=INCOND>
 
     Examples:
@@ -82,7 +80,7 @@ class C(Device):
     The (optional) initial condition is the initial (time-zero) value of capacitor
     voltage (in Volts). Note that the initial conditions (if any) apply 'only' if
     the UIC option is specified on the .TRAN control line.
-    
+
     Semiconductor Capacitors:
     General form:
         CXXXXXXX N1 N2 <VALUE> <MNAME> <L=LENGTH> <W=WIDTH> <IC=VAL>
@@ -98,7 +96,7 @@ class C(Device):
     capacitance is calculated from the process information in the model MNAME and
     the given LENGTH and WIDTH. If VALUE is not specified, then MNAME and LENGTH
     must be specified. If WIDTH is not specified, then it is taken from the
-    default width given in the model. Either VALUE or MNAME, LENGTH, and WIDTH 
+    default width given in the model. Either VALUE or MNAME, LENGTH, and WIDTH
     may be specified, but not both sets.
     The capacitor model contains process information that may be used to compute
     the capacitance from strictly geometric information.
@@ -113,13 +111,13 @@ class C(Device):
     The capacitor has a capacitance computed as
 
     CAP = CJ (LENGTH - NARROW) (WIDTH - NARROW) + 2 CJSW (LENGTH + WIDTH - 2 NARROW)
-    '''
+    """
     Device.__init__(self, name, 2)
     self.nodes = [node1, node2]
-    self.node2port = {node1:0, node2:1}
+    self.node2port = {node1: 0, node2: 1}
     self.value = value
     self.ic = ic
-  
+
   def setup(self, dt):
     self.jacobian[0, 0] = self.value / dt
     self.jacobian[0, 1] = -self.value / dt
@@ -133,27 +131,28 @@ class C(Device):
 
 
 class L(Device, CurrentSensor):
-  '''SPICE Inductor Device'''
+  """SPICE Inductor Device"""
+
   def __init__(self, name, node1, node2, internal, value, ic=None):
-    '''
+    """
     General form:
     LYYYYYYY N+ N- VALUE <IC=INCOND>
     Examples:
     LLINK 42 69 1UH
     LSHUNT 23 51 10U IC=15.7MA
-    N+ and N- are the positive and negative element nodes, respectively. VALUE is the 
+    N+ and N- are the positive and negative element nodes, respectively. VALUE is the
     inductance in Henries.
     The (optional) initial condition is the initial (time-zero) value of inductor
     current (in Amps) that flows from N+, through the inductor, to N-. Note that the
     initial conditions (if any) apply only if the UIC option is specified on the
     .TRAN analysis line.
-    '''
+    """
     Device.__init__(self, name, 3)
     self.nodes = [node1, node2, internal]
-    self.node2port = {node1:0, node2:1, internal:2}
+    self.node2port = {node1: 0, node2: 1, internal: 2}
     self.value = value
     self.ic = ic
-  
+
   def setup(self, dt):
     self.jacobian[0, 2] = 1.0
     self.jacobian[1, 2] = -1.0
@@ -168,7 +167,7 @@ class L(Device, CurrentSensor):
 
 class K(Device):
   def __init__(self, name, l1name, l2name, value):
-    '''
+    """
     Coupled (Mutual) Inductors
 
     General form:
@@ -180,22 +179,22 @@ class K(Device):
     the coefficient of coupling, K, which must be greater than 0 and less than or
     equal to 1. Using the 'dot' convention, place a 'dot' on the first node of each
     inductor.
-    '''
+    """
     Device.__init__(self, name, 6)
     self.name = name
     self.value = value
     self.l1name = l1name
     self.l2name = l2name
-    
-  
+
+
   def setup(self, dt):
     inductor1 = self.subcircuit.devices[self.l1name]
     inductor2 = self.subcircuit.devices[self.l2name]
     self.node11, self.node12, self.internal1 = inductor1.nodes
     self.node21, self.node22, self.internal2 = inductor2.nodes
     self.nodes = [self.node11, self.node12, self.internal1, self.node21, self.node22, self.internal2]
-    self.node2port = {self.node11:0, self.node12:1, self.internal1:2, 
-                      self.node21:3, self.node22:4, self.internal2:5}
+    self.node2port = {self.node11: 0, self.node12: 1, self.internal1: 2,
+                      self.node21: 3, self.node22: 4, self.internal2: 5}
     self.inductance1 = self.subcircuit.devices[self.l1name].value
     self.inductance2 = self.subcircuit.devices[self.l2name].value
     self.mutual = self.value * math.sqrt(self.inductance1 * self.inductance2)
@@ -210,22 +209,23 @@ class K(Device):
 
 
 class S(Device):
-  pass # todo
+  pass  # todo
 
 
 class W(Device):
-  pass # todo
+  pass  # todo
 
 
 # ================ VOLTAGE AND CURRENT SOURCES =======================
 
 
 class V(Device, CurrentSensor):
-  '''
+  """
   A SPICE Voltage source or current sensor.
-  '''
+  """
+
   def __init__(self, name, node1, node2, internal, value, **kwargs):
-    '''
+    """
     General form:
 
           VXXXXXXX N+ N- <<DC> DC/TRAN VALUE> <AC <ACMAG <ACPHASE>>>
@@ -248,30 +248,30 @@ class V(Device, CurrentSensor):
     flow out of the N+ node, through the source, and into the N- node. Voltage sources, in
     addition to being used for circuit excitation, are the 'ammeters' for SPICE, that is,
     zero valued voltage sources may be inserted into the circuit for the purpose of measuring
-    current. They of course have no effect on circuit operation since they represent 
+    current. They of course have no effect on circuit operation since they represent
     short-circuits.
-    DC/TRAN is the dc and transient analysis value of the source. If the source value is 
+    DC/TRAN is the dc and transient analysis value of the source. If the source value is
     zero both for dc and transient analyses, this value may be omitted. If the source value
     is time-invariant (e.g., a power supply), then the value may optionally be preceded by
     the letters DC.
     ACMAG is the ac magnitude and ACPHASE is the ac phase. The source is set to this value
-    in the ac analysis. If ACMAG is omitted following the keyword AC, a value of unity is 
-    assumed. If ACPHASE is omitted, a value of zero is assumed. If the source is not an ac 
+    in the ac analysis. If ACMAG is omitted following the keyword AC, a value of unity is
+    assumed. If ACPHASE is omitted, a value of zero is assumed. If the source is not an ac
     small-signal input, the keyword AC and the ac values are omitted.
-    DISTOF1 and DISTOF2 are the keywords that specify that the independent source has 
-    distortion inputs at the frequencies F1 and F2 respectively (see the description of 
-    the .DISTO control line). The keywords may be followed by an optional magnitude and 
+    DISTOF1 and DISTOF2 are the keywords that specify that the independent source has
+    distortion inputs at the frequencies F1 and F2 respectively (see the description of
+    the .DISTO control line). The keywords may be followed by an optional magnitude and
     phase. The default values of the magnitude and phase are 1.0 and 0.0 respectively.
-    Any independent source can be assigned a time-dependent value for transient analysis. 
-    If a source is assigned a time-dependent value, the time-zero value is used for dc 
-    analysis. There are five independent source functions: pulse, exponential, sinusoidal, 
-    piece-wise linear, and single-frequency FM. If parameters other than source values 
-    are omitted or set to zero, the default values shown are assumed. (TSTEP is the printing 
+    Any independent source can be assigned a time-dependent value for transient analysis.
+    If a source is assigned a time-dependent value, the time-zero value is used for dc
+    analysis. There are five independent source functions: pulse, exponential, sinusoidal,
+    piece-wise linear, and single-frequency FM. If parameters other than source values
+    are omitted or set to zero, the default values shown are assumed. (TSTEP is the printing
     increment and TSTOP is the final time (see the .TRAN control line for explanation)).
-    '''
-    Device.__init__(self, name, 3) # three port device (one internal node)
+    """
+    Device.__init__(self, name, 3)  # three port device (one internal node)
     self.nodes = [node1, node2, internal]
-    self.node2port = {node1:0, node2:1, internal:2}
+    self.node2port = {node1: 0, node2: 1, internal: 2}
 
     self.stimulus = None
     if isinstance(value, Stimulus):
@@ -279,7 +279,7 @@ class V(Device, CurrentSensor):
       self.stimulus.device = self
     else:
       self.value = value
-  
+
   def setup(self, dt):
     self.jacobian[0, 2] = 1.0
     self.jacobian[1, 2] = -1.0
@@ -292,79 +292,80 @@ class V(Device, CurrentSensor):
     elif self.value:
       volt = self.value
 
-    self.bequiv[2] = volt # add forced voltage to gyrator current source
+    self.bequiv[2] = volt  # add forced voltage to gyrator current source
 
 
   def step(self, dt):
-    '''
+    """
     TODO: implement time-varying source behavior here:
-    '''
+    """
     if self.stimulus:
       voltage = self.stimulus.step()
-      self.bequiv[2] = voltage # add forced voltage to gyrator current source
+      self.bequiv[2] = voltage  # add forced voltage to gyrator current source
 
   def get_current_node(self):
-    '''
-    So this device can be used as a current sensor, this function returns the 
+    """
+    So this device can be used as a current sensor, this function returns the
     node index of the internal current state variable node.
-    '''
+    """
     return self.nodes[2]
 
 
 class I(Device):
-  pass # todo
+  pass  # todo
 
 
 # ================== LINEAR DEPENDANT SOURCES ========================
 
 
 class G(Device):
-  pass # todo
+  pass  # todo
 
 
 class E(Device):
-  pass # todo
+  pass  # todo
 
 
 class F(Device):
-  pass # todo
+  pass  # todo
 
 
 class H(Device):
-  pass # todo
+  pass  # todo
 
 
 # =============== NON-LINEAR DEPENDANT SOURCES =======================
 
 
 class B(Device):
-  pass # todo
+  pass  # todo
 
 
 # ==================== TRANSMISSION LINES ============================
 
 
 class T(Device):
-  pass # todo
+  pass  # todo
 
 
 class O(Device):
-  pass # todo
+  pass  # todo
 
 
 class U(Device):
-  pass # todo
+  pass  # todo
 
 
 # =================== DIODES AND TRANSISTORS =========================
 
 
 class D(Device):
-  '''
+  """
   SPICE Diode
-  '''
+  """
+
   def __init__(self, name, nplus, nminus, mname, area=None, off=None, ic=None, temp=None):
-    '''
+    """
     General form:
 
          DXXXXXXX N+ N- MNAME <AREA> <OFF> <IC=VD> <TEMP=T>
@@ -375,54 +376,54 @@ class D(Device):
          DCLMP 3 7 DMOD 3.0 IC=0.2
 
     N+ and N- are the positive and negative nodes, respectively. MNAME is the model name,
-    AREA is the area factor, and OFF indicates an (optional) starting condition on the 
-    device for dc analysis. If the area factor is omitted, a value of 1.0 is assumed. The 
-    (optional) initial condition specification using IC=VD is intended for use with the 
-    UIC option on the .TRAN control line, when a transient analysis is desired starting 
-    from other than the quiescent operating point. The (optional) TEMP value is the 
-    temperature at which this device is to operate, and overrides the temperature 
+    AREA is the area factor, and OFF indicates an (optional) starting condition on the
+    device for dc analysis. If the area factor is omitted, a value of 1.0 is assumed. The
+    (optional) initial condition specification using IC=VD is intended for use with the
+    UIC option on the .TRAN control line, when a transient analysis is desired starting
+    from other than the quiescent operating point. The (optional) TEMP value is the
+    temperature at which this device is to operate, and overrides the temperature
     specification on the .OPTION control line.
-    '''
+    """
     Device.__init__(self, name, 2)
     self.nodes = [nplus, nminus]
-    self.node2port = {nplus:0, nminus:1}
+    self.node2port = {nplus: 0, nminus: 1}
     self.mname = mname
     self.area = area
     self.off = off
     self.ic = ic
     self.temp = temp
-  
+
   def setup(self, dt):
-    '''
+    """
     todo: doc
-    '''
+    """
     self.params = {
-    'IS' : 1.0e-14,
-    'RS' : 0.0,
-    'N' : 1.0,
-    'TT' : 0.0,
-    'CJO' : 0.0,
-    'VJ' : 1.0,
-    'M' : 0.5,
-    'EG' : 1.11,
-    'XTI' : 3.0,
-    'KF' : 0.0,
-    'AF' : 1.0,
-    'FC' : 0.5,
-    'BV' : float('inf'),
-    'IBV' : 1.0e-3,
-    'TNOM' : 27.0
+      'IS': 1.0e-14,
+      'RS': 0.0,
+      'N': 1.0,
+      'TT': 0.0,
+      'CJO': 0.0,
+      'VJ': 1.0,
+      'M': 0.5,
+      'EG': 1.11,
+      'XTI': 3.0,
+      'KF': 0.0,
+      'AF': 1.0,
+      'FC': 0.5,
+      'BV': float('inf'),
+      'IBV': 1.0e-3,
+      'TNOM': 27.0
     }
-    
+
     dmod = self.get_model(self.mname)
 
     if dmod:
       for key, value in dmod.params.items():
         if key.upper() in self.params:
-          self.params[key.upper()] = value  
+          self.params[key.upper()] = value
 
   def step(self, dt):
-    ''' Do nothing here. Non-linear device.'''
+    """ Do nothing here. Non-linear device."""
     pass
 
   def minor_step(self, dt):
@@ -441,32 +442,33 @@ class D(Device):
 
 
 class Q(Device):
-  pass # todo
- 
+  pass  # todo
+
 
 class J(Device):
-  pass # todo 
+  pass  # todo
 
 
 class M(Device):
-  pass # todo 
+  pass  # todo
 
 
 class Z(Device):
-  pass # todo
+  pass  # todo
 
 
 # ====================== EXPERIMENTAL DEVICES ========================
 
-
+'''
 class GenericTwoPort(Device):
-  '''
+  """
   EXPERIMENTAL
   Device that allows the definition of a two port device with an arbitrary
   non-linear current function.
-  '''
+  """
+
   def __init__(self, name, node1, node2, i):
-    '''
+    """
     Creates a new generic two-port device.
     Arguments:
     name  -- A mandatory name (must be unique within parent subcircuit)
@@ -479,12 +481,12 @@ class GenericTwoPort(Device):
     Is = 5.0E-9
     vT = 25.85E-3
     diode = GenericTwoPort('D1', 1, 0, i = (Isat * math.exp(v / vT) - 1.0))
-    '''
+    """
     Device.__init__(self, name, 2)
     self.nodes = [node1, node2]
-    self.node2port = {node1:0, node2:1}
+    self.node2port = {node1: 0, node2: 1}
     self.i = i
-    self.g = sympy.diff(i, v) 
+    self.g = sympy.diff(i, v)
     self.get_g = sympy.lambdify(v, self.g, "math")
     self.get_i = sympy.lambdify(v, self.i, "math")
 
@@ -498,26 +500,27 @@ class GenericTwoPort(Device):
     v = self.subcircuit.across[self.nodes[1]] - self.subcircuit.across[self.nodes[0]]
     g = self.get_g(v)
     i = self.get_i(v) - g * v
-    self.jacobian[0, 0] = g 
+    self.jacobian[0, 0] = g
     self.jacobian[0, 1] = -g
     self.jacobian[1, 0] = -g
     self.jacobian[1, 1] = g
     self.bequiv[0] = -i
     self.bequiv[1] = i
-
+'''
 
 # ============================ MODELS ================================
 
 
 class RMod(Model):
-  '''Semiconductor resistor model.'''
+  """Semiconductor resistor model."""
+
   def __init__(self, name, **kwargs):
-    '''
+    """
     This is the more general form of the resistor presented in section 6.1, and
     allows the modeling of temperature effects and for the calculation of the
     actual resistance value from strictly geometric information and the
     specifications of the process. If VALUE is specified, it overrides the
-    geometric information and defines the resistance. If MNAME is specified, 
+    geometric information and defines the resistance. If MNAME is specified,
     then the resistance may be calculated from the process information in the
     model MNAME and the given LENGTH and WIDTH. If VALUE is not specified, then
     MNAME and LENGTH must be specified. If WIDTH is not specified, then it is
@@ -551,69 +554,74 @@ class RMod(Model):
     have been measured at a different temperature. After the nominal resistance is calculated, it is adjusted for temperature by the formula:
 
         R(T) = R(T0) [1 + TC1 (T - T0) + TC2 (T-T0)**2 ]
-    '''
+    """
     Model.__init__(self, name, **kwargs)
 
 
 class CMod(Model):
-  '''Semiconductor capacitor model.'''
+  """Semiconductor capacitor model."""
+
   def __init__(self, name, **kwargs):
-    '''
+    """
     todo: add docs from spice docs
-    '''
+    """
     Model.__init__(self, name, **kwargs)
 
 
 class SwMod(Model):
-  ''' Voltage controlled switch model'''
+  """ Voltage controlled switch model"""
+
   def __init__(self, name, **kwargs):
-    '''
+    """
     todo: add docs from spice docs
-    '''
+    """
     Model.__init__(self, name, **kwargs)
 
 
 class CwMod(Model):
-  '''Current controlled switch model.'''
+  """Current controlled switch model."""
+
   def __init__(self, name, **kwargs):
-    '''
+    """
     todo: add docs from spice docs
-    '''
+    """
     Model.__init__(self, name, **kwargs)
 
 
 class UrcMod(Model):
-  '''Uniform distributed RC model.'''
+  """Uniform distributed RC model."""
+
   def __init__(self, name, **kwargs):
-    '''
+    """
     todo: add docs from spice docs
-    '''
+    """
     Model.__init__(self, name, **kwargs)
 
 
 class LtraMod(Model):
-  '''Lossy transmission line model '''
+  """Lossy transmission line model """
+
   def __init__(self, name, **kwargs):
-    '''
+    """
     todo: add docs from spice docs
-    '''
+    """
     Model.__init__(self, name, **kwargs)
 
 
 class DMod(Model):
   def __init__(self, name, **kwargs):
-    '''
-    The dc characteristics of the diode are determined by the parameters IS and N. 
-    An ohmic resistance, RS, is included. Charge storage effects are modeled by a 
+    """
+    The dc characteristics of the diode are determined by the parameters IS and N.
+    An ohmic resistance, RS, is included. Charge storage effects are modeled by a
     transit time, TT, and a nonlinear depletion layer capacitance which is determined
-    by the parameters CJO, VJ, and M. The temperature dependence of the saturation 
-    current is defined by the parameters EG, the energy and XTI, the saturation 
-    current temperature exponent. The nominal temperature at which these parameters 
+    by the parameters CJO, VJ, and M. The temperature dependence of the saturation
+    current is defined by the parameters EG, the energy and XTI, the saturation
+    current temperature exponent. The nominal temperature at which these parameters
     were measured is TNOM, which defaults to the circuit-wide value specified on the
     .OPTIONS control line. Reverse breakdown is modeled by an exponential increase in
     the reverse diode current and is determined by the parameters BV and IBV (both of
     which are positive numbers).
-    
+
     #  name parameter                        units default example
     --------------------------------------------------------------
     1  IS   saturation current               A     1.0e-14 1.0e-14
@@ -630,81 +638,89 @@ class DMod(Model):
     12 FC   coef. forward-bias depletion cap -     0.5     -
     13 BV   reverse breakdown voltage        V     inf     40.0
     14 IBV  current at breakdown voltage     A     1.0e-3  -
-    15 TNOM parameter measurement temp       degC  27      50	 
+    15 TNOM parameter measurement temp       degC  27      50
 
-    '''
+    """
     Model.__init__(self, name, **kwargs)
 
 
 class NpnMod(Model):
-  '''NPN BJT model.'''
+  """NPN BJT model."""
+
   def __init__(self, name, **kwargs):
-    '''
+    """
     todo: add docs from spice docs
-    '''
+    """
     Model.__init__(self, name, **kwargs)
 
 
 class PnpMod(Model):
-  '''PNP BJT model.'''
+  """PNP BJT model."""
+
   def __init__(self, name, **kwargs):
-    '''
+    """
     todo: add docs from spice docs
-    '''
+    """
     Model.__init__(self, name, **kwargs)
 
 
 class NfjMod(Model):
-  '''N-channel JFET model'''
+  """N-channel JFET model"""
+
   def __init__(self, name, **kwargs):
-    '''
+    """
     todo: add docs from spice docs
-    '''
+    """
     Model.__init__(self, name, **kwargs)
 
 
 class PfjMod(Model):
-  '''P-channel JFET model.'''
+  """P-channel JFET model."""
+
   def __init__(self, name, **kwargs):
-    '''
+    """
     todo: add docs from spice docs
-    '''
+    """
     Model.__init__(self, name, **kwargs)
 
 
 class NmosMod(Model):
-  '''N-channel MOSFET model'''
+  """N-channel MOSFET model"""
+
   def __init__(self, name, **kwargs):
-    '''
+    """
     todo: add docs from spice docs
-    '''
+    """
     Model.__init__(self, name, **kwargs)
 
 
 class PmosMod(Model):
-  '''P-channel MOSFET model.'''
+  """P-channel MOSFET model."""
+
   def __init__(self, name, **kwargs):
-    '''
+    """
     todo: add docs from spice docs
-    '''
+    """
     Model.__init__(self, name, **kwargs)
 
 
 class NmfMod(Model):
-  '''N-channel MESFET model'''
+  """N-channel MESFET model"""
+
   def __init__(self, name, **kwargs):
-    '''
+    """
     todo: add docs from spice docs
-    '''
+    """
     Model.__init__(self, name, **kwargs)
 
 
 class PmfMod(Model):
-  '''P-channel MESFET model.'''
+  """P-channel MESFET model."""
+
   def __init__(self, name, **kwargs):
-    '''
+    """
     todo: add docs from spice docs
-    '''
+    """
     Model.__init__(self, name, **kwargs)
 
 
@@ -713,7 +729,7 @@ class PmfMod(Model):
 
 class Pulse(Stimulus):
   def __init__(self, v1, v2, td=0.0, tr=None, tf=None, pw=None, per=None):
-    '''
+    """
     General form:
 
          PULSE(V1 V2 TD TR TF PW PER)
@@ -742,7 +758,8 @@ class Pulse(Stimulus):
     TSTOP	V1
 
     Intermediate points are determined by linear interpolation.
-    '''
+    """
+
   def setup(self, device):
     pass
 
@@ -752,7 +769,7 @@ class Pulse(Stimulus):
 
 class Sin(Stimulus):
   def __init__(self, vo, va, freq=1.0, td=0.0, theta=None):
-    '''
+    """
     General form:
 
          SIN(VO VA FREQ TD THETA)
@@ -773,7 +790,7 @@ class Sin(Stimulus):
     time, t	value
     0 to TD	VO
     TD to TSTOP	VO+VA.exp[-(t-TD)/THETA].sin[2?.FREQ.(t+TD)]
-    '''
+    """
     self.vo = vo
     self.va = va
     self.freq = freq
@@ -791,15 +808,15 @@ class Sin(Stimulus):
       value = 0.0
     elif self.theta:
       value = (self.vo + self.va * math.exp(-(t + self.td) / self.theta) *
-              math.sin(2.0 * math.pi * self.freq  * (t + self.td)))
+               math.sin(2.0 * math.pi * self.freq * (t + self.td)))
     else:
-      value = self.vo + self.va * math.sin(2.0 * math.pi * self.freq  * (t + self.td))
+      value = self.vo + self.va * math.sin(2.0 * math.pi * self.freq * (t + self.td))
     return value
 
 
 class Exp(Stimulus):
   def __init__(self, v1, v2, td1, tau1, td2, tau2):
-    pass # todo
+    pass  # todo
 
   def setup(self):
     pass
@@ -810,18 +827,40 @@ class Exp(Stimulus):
 
 class Pwl(Stimulus):
   def __init__(self, *time_voltage_pairs):
-    pass # todo
+    self.xp = []
+    self.yp = []
+    for time, value in time_voltage_pairs:
+      try:
+        self.xp.append(float(time))
+        self.yp.append(float(value))
+      except ValueError as e:
+        pass
+      pass
 
   def setup(self):
     pass
 
   def step(self):
-    pass
+    x = self.device.get_time()
+    return self.interp(x)
+
+  def interp(self, x):
+    if x <= self.xp[0]:
+      return self.yp[0]
+    elif x >= self.xp[-1]:
+      return self.yp[-1]
+    else:
+      itr = 1
+      while x > self.xp[itr] and itr < (len(self.xp) - 1):
+        itr += 1
+      x0, y0 = self.xp[itr - 1], self.yp[itr - 1]
+      x1, y1 = self.xp[itr], self.yp[itr]
+      return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
 
 
 class Sffm(Stimulus):
   def __init__(self, vo, va, fc, md1, fs):
-    pass # todo
+    pass  # todo
 
   def setup(self):
     pass
@@ -833,4 +872,4 @@ class Sffm(Stimulus):
 # ======================= MIAN FUNCTION ==============================
 
 if __name__ == '__main__':
-  pass # TODO: test code here
+  pass  # TODO: test code here
