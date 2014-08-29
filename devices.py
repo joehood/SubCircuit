@@ -1,18 +1,13 @@
-"""
-Contains the core (atomic) SPICE circuit element definitios.
-"""
+"""Contains the core (atomic) SPICE circuit element definitions."""
 
-# =========================== IMPORTS ==============================
 
 import math
 
 from interfaces import *
+import pyspyce
 
 
-# =========================== GLOBALS ==============================
-
-
-# ===================== ELEMENTARY DEVICES ==========================
+# Elementary Devices:
 
 
 class R(Device):
@@ -20,7 +15,8 @@ class R(Device):
     A SPICE R (resistor or semiconductor resistor) device.
     """
 
-    def __init__(self, name, node1, node2, value, rmodel=None, l=None, w=None, temp=None, **kwargs):
+    def __init__(self, name, node1, node2, value, rmodel=None, l=None, w=None,
+                 temp=None, **kwargs):
         """General form:
         RXXXXXXX N1 N2 VALUE
         Examples:
@@ -37,28 +33,27 @@ class R(Device):
         RLOAD 2 10 10K
         RMOD 3 7 RMODEL L=10u W=1u
         """
-        Device.__init__(self, name, 2)  # call base constructor for 2-port device
+        Device.__init__(self, name, ports=2)
         self.nodes = [node1, node2]  # define nodes list
-        self.node2port = {node1: 0, node2: 1}  # define system node to device port mapping
+        self.node2port = {node1: 0,
+                          node2: 1}  # define system node to device port mapping
         self.value = value  # store value (resistance in ohms)
 
     def setup(self, dt):
-        """
-        Define the resistor jacobian stamp.
+        """Define the resistor jacobian stamp.
         """
         if self.value:  # if non-zero:
             g = 1.0 / self.value
         else:
             g = 1.0E12  # approximate short circuit for 0-resistance
 
-        self.jacobian[0, 0] = g
-        self.jacobian[0, 1] = -g
-        self.jacobian[1, 0] = -g
-        self.jacobian[1, 1] = g
+        self.jac[0, 0] = g
+        self.jac[0, 1] = -g
+        self.jac[1, 0] = -g
+        self.jac[1, 1] = g
 
     def step(self, t, dt):
-        """
-        Do nothing here. Linear and time-invariant device.
+        """Do nothing here. Linear and time-invariant device.
         """
         pass
 
@@ -66,7 +61,8 @@ class R(Device):
 class C(Device):
     """SPICE capacitor device"""
 
-    def __init__(self, name, node1, node2, value, mname=None, l=None, w=None, ic=None):
+    def __init__(self, name, node1, node2, value, mname=None, l=None, w=None,
+                 ic=None):
         """General form:
         CXXXXXXX N+ N- VALUE <IC=INCOND>
 
@@ -118,13 +114,14 @@ class C(Device):
         self.ic = ic
 
     def setup(self, dt):
-        self.jacobian[0, 0] = self.value / dt
-        self.jacobian[0, 1] = -self.value / dt
-        self.jacobian[1, 0] = -self.value / dt
-        self.jacobian[1, 1] = self.value / dt
+        self.jac[0, 0] = self.value / dt
+        self.jac[0, 1] = -self.value / dt
+        self.jac[1, 0] = -self.value / dt
+        self.jac[1, 1] = self.value / dt
 
     def step(self, t, dt):
-        vc = self.subcircuit.across_history[self.nodes[1]] - self.subcircuit.across_history[self.nodes[0]]
+        vc = self.subcircuit.across_history[self.nodes[1]] - \
+             self.subcircuit.across_history[self.nodes[0]]
         self.bequiv[0] = -self.value / dt * vc
         self.bequiv[1] = self.value / dt * vc
 
@@ -153,11 +150,11 @@ class L(Device, CurrentSensor):
         self.ic = ic
 
     def setup(self, dt):
-        self.jacobian[0, 2] = 1.0
-        self.jacobian[1, 2] = -1.0
-        self.jacobian[2, 0] = 1.0
-        self.jacobian[2, 1] = -1.0
-        self.jacobian[2, 2] = -self.value / dt
+        self.jac[0, 2] = 1.0
+        self.jac[1, 2] = -1.0
+        self.jac[2, 0] = 1.0
+        self.jac[2, 1] = -1.0
+        self.jac[2, 2] = -self.value / dt
 
     def step(self, t, dt):
         inductor_current = self.subcircuit.across_history[self.nodes[2]]
@@ -201,14 +198,16 @@ class K(Device):
         inductor2 = self.subcircuit.devices[self.l2name]
         self.node11, self.node12, self.internal1 = inductor1.nodes
         self.node21, self.node22, self.internal2 = inductor2.nodes
-        self.nodes = [self.node11, self.node12, self.internal1, self.node21, self.node22, self.internal2]
+        self.nodes = [self.node11, self.node12, self.internal1, self.node21,
+                      self.node22, self.internal2]
         self.node2port = {self.node11: 0, self.node12: 1, self.internal1: 2,
                           self.node21: 3, self.node22: 4, self.internal2: 5}
         self.inductance1 = self.subcircuit.devices[self.l1name].value
         self.inductance2 = self.subcircuit.devices[self.l2name].value
-        self.mutual = self.value * math.sqrt(self.inductance1 * self.inductance2)
-        self.jacobian[2, 5] = -self.mutual / dt
-        self.jacobian[5, 2] = -self.mutual / dt
+        self.mutual = self.value * math.sqrt(
+            self.inductance1 * self.inductance2)
+        self.jac[2, 5] = -self.mutual / dt
+        self.jac[5, 2] = -self.mutual / dt
 
     def step(self, t, dt):
         current1 = self.subcircuit.across_history[self.internal1]
@@ -218,23 +217,183 @@ class K(Device):
 
 
 class S(Device):
-    pass  # todo
+    """
+    General form:
+
+    SXXXXXXX N+ N- NC+ NC- MODEL <ON><OFF>
+    WYYYYYYY N+ N- VNAM MODEL <ON><OFF>
+
+    Examples:
+
+    s1 1 2 3 4 switch1 ON
+    s2 5 6 3 0 sm2 off
+    Switch1 1 2 10 0 smodel1
+    w1 1 2 vclock switchmod1
+    W2 3 0 vramp sm1 ON
+    wreset 5 6 vclck lossyswitch OFF
+
+    Nodes 1 and 2 are the nodes between which the switch terminals are connected. The model name is mandatory while the
+    initial conditions are optional. For the voltage controlled switch, nodes 3 and 4 are the positive and negative
+    controlling nodes respectively. For the current controlled switch, the controlling current is that through the
+    specified voltage source. The direction of positive controlling current flow is from the positive node, through
+    the source, to the negative node.
+
+    Switch Model (SW/CSW)
+
+    The switch model allows an almost ideal switch to be described in SPICE. The switch is not quite ideal, in that the
+    resistance can not change from 0 to infinity, but must always have a finite positive value. By proper selection of
+    the on and off resistances, they can be effectively zero and infinity in comparison to other circuit elements. The
+    parameters available are:
+
+    name	parameter	units	default	switch
+    VT	threshold voltage	Volts	0.0	S
+    IT	threshold current	Amps	0.0	W
+    VH	hysteresis voltage	Volts	0.0	S
+    IH	hysteresis current	Amps	0.0	W
+    RON	on resistance	Z	1.0	both
+    ROFF	off resistance	Z	1/GMIN*	both
+
+    *(See the .OPTIONS control line for a description of GMIN, its default value results in an off-resistance of
+    1.0e+12 ohms.)
+
+    The use of an ideal element that is highly nonlinear such as a switch can cause large discontinuities to occur in
+    the circuit node voltages. A rapid change such as that associated with a switch changing state can cause numerical
+    roundoff or tolerance problems leading to erroneous results or timestep difficulties. The user of switches can
+    improve the situation by taking the following steps: First, it is wise to set ideal switch impedances just high or
+    low enough to be negligible with respect to other circuit elements. Using switch impedances that are close to
+    "ideal" in all cases aggravates the problem of discontinuities mentioned above. Of course, when modeling real
+    devices such as MOSFETS, the on resistance should be adjusted to a realistic level depending on the size of the
+    device being modeled. If a wide range of ON to OFF resistance must be used in the switches (ROFF/RON >1e+12), then
+    the tolerance on errors allowed during transient analysis should be decreased by using the .OPTIONS control line
+    and specifying TRTOL to be less than the default value of 7.0. When switches are placed around capacitors, then the
+    option CHGTOL should also be reduced. Suggested values for these two options are 1.0 and 1e-16 respectively. These
+    changes inform SPICE3 to be more careful around the switch points so that no errors are made due to the rapid
+    change in the circuit.
+    """
+
+    def __init__(self, name, nodes, model=None, vsource=None, on=False,
+                 **kwargs):
+        """
+        Defines a switch device instance for subcircuit.
+        :param name: name of switch. Must be unique within subcircuit
+        :param ports: sequence of three ports if supplying vsource argument:
+        (node1, node2, internal); or 4 ports if no vsource is supplied:
+        (node1, node2, control_node1, control_node2)
+        :param model: name of switch model to use. Must be defined and added to
+        circuit before using here.
+        :param vsource: name of the controlling voltage source. Optional
+        :param on: defines whether the initial state of the switch is ON at t=0
+        """
+        Device.__init__(self, name, 3)
+        self.name = name
+        self.node1 = nodes[0]
+        self.node2 = nodes[1]
+        self.internal = nodes[2]
+        self.nodes = [self.node1, self.node2, self.internal]
+        self.node2port = {self.node1: 0, self.node2: 1, self.internal: 2}
+        self.cnode1 = None
+        self.cnode2 = None
+
+        if len(nodes) == 5:
+            self.cnode1 = nodes[3]
+            self.cnode2 = nodes[4]
+
+        self.model = model
+        self.vsource = vsource
+        self.on = on
+        self.params = {}
+        self.state = on
+
+        # model params:
+        self.vt = 0.0
+        self.it = 0.0
+        self.vh = 0.0
+        self.ih = 0.0
+        self.ron = 1.0
+        self.roff = pyspyce.ONE_OVER_GMIN
+
+        self.kwargs = kwargs
+
+    def setup(self, dt):
+        """Initialize the switch model for t=0."""
+
+        # transfer model params from model to member variables (__dict__) if
+        # one is asscociated with this switch device:
+        if self.model:
+            for key in self.model.params:
+                if key in self.__dict__:
+                    self.__dict__[key] = self.model.params[key]
+
+        # now override with any passed-in keyword args:
+        if self.kwargs:
+            for key in self.kwargs:
+                if key in self.__dict__:
+                    self.__dict__[key] = self.kwargs[key]
+
+        # initialize switch state:
+        self.state = self.on
+
+        # set constant part of jacobian:
+        self.jac[0, 2] = 1.0
+        self.jac[1, 2] = -1.0
+        self.jac[2, 0] = 1.0
+        self.jac[2, 1] = -1.0
+
+        # determine switch state and transition if necessary:
+        if self.state:
+            self.jac[2, 2] = -self.ron
+        else:
+            self.jac[2, 2] = -self.roff
+
+        self.bequiv[2] = 0.0
+
+    def step(self, t, dt):
+        """Do nothing here. Non-linear device behavior is modeled in minor_step()."""
+        pass
+
+    def minor_step(self, k, t, dt):
+        """
+        Update the jacobian and b-equivalent for this switch for the current minor step iteration.
+        :param k: current netwon iteration index
+        :param t: current time
+        :param dt: current timestep
+        :return: None
+        """
+
+        # determine control signal:
+        control_signal = 0.0
+        if self.vsource:
+            control_signal = -self.get_across(device=self.vsource)
+        else:
+            control_signal = self.get_across(self.cnode1, self.cnode2)
+
+        # determine switch state and transition if necessary:
+        if control_signal >= self.vt:
+            if not self.state:
+                self.state = True
+                self.jac[2, 2] = -self.ron
+                # self.bequiv[2] = self.get_across(0, 1)
+        elif control_signal < self.vt:
+            if self.state:
+                self.state = False
+                self.jac[2, 2] = -self.roff
+                # self.bequiv[2] = -(self.ron * self.get_across(2))
 
 
 class W(Device):
     pass  # todo
 
 
-# ================ VOLTAGE AND CURRENT SOURCES =======================
+# Independant Sources:
 
 
 class V(Device, CurrentSensor):
-    """
-    A SPICE Voltage source or current sensor.
-    """
+    """A SPICE Voltage source or current sensor."""
 
-    def __init__(self, name, node1, node2, internal, value, **kwargs):
-        """
+    def __init__(self, name, node1, node2, internal,
+                 value, resistance=0.0, inductance=0.0, **kwargs):
+
+        """Create a new SPICE Diode device instance.
         General form:
 
               VXXXXXXX N+ N- <<DC> DC/TRAN VALUE> <AC <ACMAG <ACPHASE>>>
@@ -289,11 +448,15 @@ class V(Device, CurrentSensor):
         else:
             self.value = value
 
+        self.resistance = resistance
+        self.inductance = inductance
+
     def setup(self, dt):
-        self.jacobian[0, 2] = 1.0
-        self.jacobian[1, 2] = -1.0
-        self.jacobian[2, 0] = 1.0
-        self.jacobian[2, 1] = -1.0
+        self.jac[0, 2] = 1.0
+        self.jac[1, 2] = -1.0
+        self.jac[2, 0] = 1.0
+        self.jac[2, 1] = -1.0
+        self.jac[2, 2] = -self.resistance + -self.inductance / dt
 
         volt = 0.0
         if self.stimulus:
@@ -301,15 +464,21 @@ class V(Device, CurrentSensor):
         elif self.value:
             volt = self.value
 
-        self.bequiv[2] = volt  # add forced voltage to gyrator current source
+        self.bequiv[2] = volt
 
     def step(self, t, dt):
-        """
-        TODO: implement time-varying source behavior here:
+        """Step the voltage source.
         """
         if self.stimulus:
-            voltage = self.stimulus.step(t, dt)
-            self.bequiv[2] = voltage  # add forced voltage to gyrator current source
+            volt = self.stimulus.step(t, dt)
+        else:
+            volt = self.value
+
+        if self.inductance:
+            il = self.get_across_history(2)
+            volt += self.inductance / dt * il
+
+        self.bequiv[2] = volt
 
     def get_current_node(self):
         """
@@ -320,18 +489,112 @@ class V(Device, CurrentSensor):
 
 
 class I(Device):
-    pass  # todo
+    """A SPICE Current source or current sensor."""
+
+    def __init__(self, name, node1, node2,
+                 value, resistance=0.0, **kwargs):
+
+        """TODO
+        """
+        Device.__init__(self, name, 2)
+        self.nodes = [node1, node2]
+        self.node2port = {node1: 0, node2: 1}
+
+        self.stimulus = None
+        if isinstance(value, Stimulus):
+            self.stimulus = value
+            self.stimulus.device = self
+        else:
+            self.value = value
+
+        self.resistance = resistance
+
+    def setup(self, dt):
+
+        g = 0.0
+        if self.resistance > 0.0:
+            g = 1.0 / self.resistance
+
+        self.jac[0, 0] = g
+        self.jac[0, 1] = -g
+        self.jac[1, 0] = -g
+        self.jac[1, 1] = g
+
+        current = 0.0
+        if self.stimulus:
+            current = self.stimulus.setup(dt)
+        elif self.value:
+            current = self.value
+
+        self.bequiv[0] = current
+        self.bequiv[1] = -current
+
+    def step(self, t, dt):
+        """Step the current source.
+        """
+        if self.stimulus:
+            current = self.stimulus.step(t, dt)
+        else:
+            current = self.value
+
+        self.bequiv[0] = current
+        self.bequiv[1] = -current
 
 
-# ================== LINEAR DEPENDANT SOURCES ========================
+# Linear Dependant Sources:
 
 
 class G(Device):
     pass  # todo
 
 
-class E(Device):
-    pass  # todo
+class E(Device, CurrentSensor):
+    """A SPICE E (VCVS) device."""
+
+    def __init__(self, name, nplus, nminus, ncplus, ncminus, internal,
+                 value=1.0, **kwargs):
+
+        """General form:
+
+            EXXXXXXX N+ N- NC+ NC- VALUE
+
+        Examples:
+
+            E1 2 3 14 1 2.0
+        N+ is the positive node, and N- is the negative node. NC+ and NC- are
+        the positive and negative controlling nodes, respectively. VALUE is the
+        voltage gain.
+
+        """
+        Device.__init__(self, name, 5)
+        self.nodes = [nplus, nminus, ncplus, ncminus, internal]
+
+        self.node2port = {nplus: 0,
+                          nminus: 1,
+                          ncplus: 2,
+                          ncminus: 3,
+                          internal: 4}  # define node-to-port mapping
+
+        self.value = value  # store value (gain)
+
+    def setup(self, dt):
+        """Define the VCVS jacobian stamp."""
+        np, nm, ncp, ncm, ik = 0, 1, 2, 3, 4
+
+        self.jac[np, ik] = 1.0
+        self.jac[nm, ik] = -1.0
+        self.jac[ik, np] = -1.0
+        self.jac[ik, nm] = 1.0
+        self.jac[ik, ncp] = self.value
+        self.jac[ik, ncm] = -self.value
+
+    def step(self, t, dt):
+        """Do nothing here. Linear and time-invariant device."""
+        pass
+
+    def get_current_node(self):
+        """Return the current node."""
+        return self.nodes[4]
 
 
 class F(Device):
@@ -342,14 +605,14 @@ class H(Device):
     pass  # todo
 
 
-# =============== NON-LINEAR DEPENDANT SOURCES =======================
+# Non-linear Dependant Sources:
 
 
 class B(Device):
     pass  # todo
 
 
-# ==================== TRANSMISSION LINES ============================
+# Transmission Lines:
 
 
 class T(Device):
@@ -364,15 +627,14 @@ class U(Device):
     pass  # todo
 
 
-# =================== DIODES AND TRANSISTORS =========================
+# Diodes and Transistors:
 
 
 class D(Device):
-    """
-    SPICE Diode
-    """
+    """Represents a SPICE Diode device."""
 
-    def __init__(self, name, nplus, nminus, mname, area=None, off=None, ic=None, temp=None):
+    def __init__(self, name, nplus, nminus, mname=None, area=None, off=None,
+                 ic=None, temp=None, **kwargs):
         """
         General form:
 
@@ -400,35 +662,41 @@ class D(Device):
         self.off = off
         self.ic = ic
         self.temp = temp
+        self.kwargs = kwargs  # these will be used to override the default or model params (see setup() function)
+
+        # model parameters:
+        self.Is = 1.0e-14  # can't be 'is' because 'is' is a keyword
+        self.rs = 0.0
+        self.n = 1.0
+        self.tt = 0.0
+        self.cjo = 0.0
+        self.vj = 1.0
+        self.m = 0.5
+        self.eg = 1.11
+        self.xti = 3.0
+        self.kf = 0.0
+        self.af = 1.0
+        self.fc = 0.5
+        self.bv = float('inf')
+        self.ibv = 1.0e-3
+        self.tnom = 27.0
+        self.model = None
 
     def setup(self, dt):
-        """
-        todo: doc
-        """
-        self.params = {
-            'IS': 1.0e-14,
-            'RS': 0.0,
-            'N': 1.0,
-            'TT': 0.0,
-            'CJO': 0.0,
-            'VJ': 1.0,
-            'M': 0.5,
-            'EG': 1.11,
-            'XTI': 3.0,
-            'KF': 0.0,
-            'AF': 1.0,
-            'FC': 0.5,
-            'BV': float('inf'),
-            'IBV': 1.0e-3,
-            'TNOM': 27.0
-        }
+        """Initialize the diode device at t-0."""
 
-        dmod = self.get_model(self.mname)
+        # transfer model params from model to member variables (__dict__)
+        # if one is asscociated with this device:
+        if self.model:
+            for key in self.model.params:
+                if key in self.__dict__:
+                    self.__dict__[key] = self.model.params[key]
 
-        if dmod:
-            for key, value in dmod.params.items():
-                if key.upper() in self.params:
-                    self.params[key.upper()] = value
+        # now override with any passed-in keyword args:
+        if self.kwargs:
+            for key in self.kwargs:
+                if key in self.__dict__:
+                    self.__dict__[key] = self.kwargs[key]
 
     def step(self, t, dt):
         """ Do nothing here. Non-linear device."""
@@ -436,15 +704,15 @@ class D(Device):
 
     def minor_step(self, k, t, dt):
         vt = 25.85e-3
-        v = self.subcircuit.across[self.nodes[0]] - self.subcircuit.across[self.nodes[1]]
+        v = self.get_across(0, 1)
         v = min(v, 0.8)
-        gd = self.params['IS'] / vt * math.exp(v / vt)
-        id = self.params['IS'] * (math.exp(v / vt) - 1.0)
-        beq = id - gd * v
-        self.jacobian[0, 0] = gd
-        self.jacobian[0, 1] = -gd
-        self.jacobian[1, 0] = -gd
-        self.jacobian[1, 1] = gd
+        geq = self.Is / vt * math.exp(v / vt)
+        ieq = self.Is * (math.exp(v / vt) - 1.0)
+        beq = ieq - geq * v
+        self.jac[0, 0] = geq
+        self.jac[0, 1] = -geq
+        self.jac[1, 0] = -geq
+        self.jac[1, 1] = geq
         self.bequiv[0] = -beq
         self.bequiv[1] = beq
 
@@ -465,7 +733,8 @@ class Z(Device):
     pass  # todo
 
 
-# ====================== EXPERIMENTAL DEVICES ========================
+# Experimental:
+
 
 class GenericTwoPort(Device):
     """
@@ -504,17 +773,20 @@ class GenericTwoPort(Device):
         pass
 
     def minor_step(self, k, t, dt):
-        v = self.subcircuit.across[self.nodes[1]] - self.subcircuit.across[self.nodes[0]]
+        v = (self.subcircuit.across[self.nodes[1]] -
+             self.subcircuit.across[self.nodes[0]])
+
         g = self.get_g(v)
         i = self.get_i(v) - g * v
-        self.jacobian[0, 0] = g
-        self.jacobian[0, 1] = -g
-        self.jacobian[1, 0] = -g
-        self.jacobian[1, 1] = g
+        self.jac[0, 0] = g
+        self.jac[0, 1] = -g
+        self.jac[1, 0] = -g
+        self.jac[1, 1] = g
         self.bequiv[0] = -i
         self.bequiv[1] = i
 
-# ============================ MODELS ================================
+
+# Models:
 
 
 class RMod(Model):
@@ -730,7 +1002,7 @@ class PmfMod(Model):
         Model.__init__(self, name, **kwargs)
 
 
-# =================== SOURCE STIMULI MODELS ==========================
+# Stimuli:
 
 
 class Pulse(Stimulus):
@@ -776,6 +1048,14 @@ class Pulse(Stimulus):
         self.device = None
 
     def setup(self, dt):
+        if self.tr is None:
+            self.tr = dt
+        if self.tf is None:
+            self.tf = dt
+        if self.pw is None:
+            self.pw = dt
+        if self.per is None:
+            self.per = self.td + 3.0 * dt
         return self.v1
 
     def step(self, t, dt):
@@ -784,8 +1064,10 @@ class Pulse(Stimulus):
             return self.v2
         elif self.td <= t < (self.td + self.tr):
             return self.v1 + (self.v2 - self.v1) * (t - self.td) / self.tr
-        elif (self.td + self.tr + self.pw) <= t < (self.td + self.tr + self.pw + self.tf):
-            return self.v2 + (self.v1 - self.v2) * (t - (self.td + self.tr + self.pw)) / self.tf
+        elif (self.td + self.tr + self.pw) <= t < (
+                    self.td + self.tr + self.pw + self.tf):
+            return self.v2 + (self.v1 - self.v2) * (
+            t - (self.td + self.tr + self.pw)) / self.tf
         else:
             return self.v1
 
@@ -793,7 +1075,7 @@ class Pulse(Stimulus):
 class Sin(Stimulus):
     """Models a sin wave stimulus for independent sources."""
 
-    def __init__(self, vo, va, freq=1.0, td=0.0, theta=None):
+    def __init__(self, vo=0.0, va=1.0, freq=1.0, td=0.0, theta=0.0, phi=0.0):
         """
         General form:
 
@@ -821,11 +1103,12 @@ class Sin(Stimulus):
         self.freq = freq
         self.td = td
         self.theta = theta
+        self.phi = phi
         self.device = None
 
     def setup(self, dt):
         """Sets up the pulse stimulus and returns the initial output."""
-        return self.step()
+        return self.step(0, dt)
 
     def step(self, t, dt):
         """Update and return the stimulus value at the current time."""
@@ -833,38 +1116,15 @@ class Sin(Stimulus):
             return 0.0
         elif self.theta:
             return (self.vo + self.va * math.exp(-(t + self.td) / self.theta) *
-                     math.sin(2.0 * math.pi * self.freq * (t + self.td)))
+                    math.sin(2.0 * math.pi * self.freq
+                             * (t + self.td) + self.phi))
         else:
-            return self.vo + self.va * math.sin(2.0 * math.pi * self.freq * (t + self.td))
+            return self.vo + self.va * math.sin(
+                2.0 * math.pi * self.freq * (t + self.td) + self.phi)
 
 
 class Exp(Stimulus):
-    """
-    General form:
-
-    EXP(V1 V2 TD1 TAU1 TD2 TAU2)
-
-    Example:
-
-    VIN 3 0 EXP(-4 -1 2NS 30NS 60NS 40NS)
-
-    parameters	               default value  units
-    ------------------------------------------------
-    V1    (initial value)	   -              V or A
-    V2    (pulsed value)       -              V or A
-    TD1   (rise delay time)    0.0            s
-    TAU1  (rise time constant) TSTEP          s
-    TD2   (fall delay time)    TD1+TSTEP      s
-    TAU2  (fall time constant) TSTEP          s
-
-    The shape of the waveform is described by the following table:
-
-    time, t       value
-    --------------------------------------------------------------------------------
-    0 to TD1      V1
-    TD1 to TD2    V1+(V2-V1).[1-exp(-(t-TD1)/TAU1)]
-    TD2 to TSTOP  1+(V2-V1).[1-exp(-(t-TD1)/TAU1)]+(V1-V2).[1-exp(-(t-TD2)/TAU2)]
-    """
+    """Generates a SPICE EXP stimulus for independant sources."""
 
     def __init__(self, v1, v2, td1=0.0, tau1=None, td2=None, tau2=None):
         """
@@ -899,17 +1159,17 @@ class Exp(Stimulus):
         if 0.0 >= t < self.td1:
             return self.v1
         elif self.td1 <= t < self.td1:
-            return self.v1 + (self.v2 - self.v2) * (1.0 - math.exp(-(t - self.td1) / self.tau1))
+            return self.v1 + (self.v2 - self.v2) * (
+            1.0 - math.exp(-(t - self.td1) / self.tau1))
         else:
             return (1.0 + (self.v2 - self.v1)
                     * (1.0 - math.exp(-(t - self.td1) / self.tau1))
-                    + (self.v1 - self.v2) * (1.0 - math.exp(-(t - self.td2) / self.tau2)))
-
-
-
+                    + (self.v1 - self.v2) * (
+            1.0 - math.exp(-(t - self.td2) / self.tau2)))
 
 
 class Pwl(Stimulus):
+    """TODO Doc"""
     def __init__(self, *time_voltage_pairs):
         self.xp = []
         self.yp = []
@@ -953,7 +1213,6 @@ class Sffm(Stimulus):
         pass
 
 
-# ======================= MIAN FUNCTION ==============================
-
+# Main:
 if __name__ == '__main__':
     pass  # TODO: test code here

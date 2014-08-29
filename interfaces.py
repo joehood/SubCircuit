@@ -1,18 +1,13 @@
-"""
-Contains base class definitions for spyce Models and Devices.
-"""
+"""Contains base class definitions for spyce Models and Devices."""
 
 from circuit import *
 
 
 class Model():
-    """
-    Base model (.model) object.
-    """
+    """Base model (.model) object."""
 
     def __init__(self, name, **kwargs):
-        """
-        Creates a base Model.
+        """Creates a base Model.
         Arguments:
         name    -- Mandatory model name (most be unique within the circuit).
         circuit -- Parent circuit
@@ -23,25 +18,24 @@ class Model():
 
 
 class Device():
-    """
-    A Device (circuit element) base object.
-    """
+    """A Device (circuit element) base object."""
 
     def __init__(self, name, ports, **kwargs):
         """
         Creates a base Device.
         Aruguments:
-        name --        Mandatory name. Must be unique within the parent's subcircuit.
-        ports --       A sequence of the port indeces.
-        subcircuit --  The parent subcircuit.
-        kwargs --      Additional keyword arguments stored in the params dict.
+        :param name: Mandatory name. Must be unique within the parent's subcircuit.
+        :param ports: A sequence of the port indeces.
+        :param subcircuit: The parent subcircuit.
+        :param kwargs: Additional keyword arguments stored in the params dict.
         """
         self.name = name
-        self.jacobian = numpy.zeros((ports, ports))
+        self.jac = numpy.zeros((ports, ports))
         self.bequiv = numpy.zeros((ports, 1))
         self.params = kwargs
         self.device = None
         self.subcircuit = None
+        self.nodes = 0
 
     def get_time(self):
         return self.subcircuit.simulator.time
@@ -55,14 +49,38 @@ class Device():
         else:
             return None
 
-    def get_across(self, port1, port2=None):
+    def get_across_history(self, port1=None, port2=None, device=None):
         """Get the across value between the nodes to which the given ports are attached.
         If port2 is not provided, the across value returned is the across value of port1's
         node with respect to ground.
         """
-        across = self.subcircuit.across_history[self.nodes[port1]]
-        if port2:
-            across -= self.subcircuit.across_history[self.nodes[port2]]
+        across = float('inf')
+        if device:
+            nodes = self.subcircuit.devices[device].nodes
+            if len(nodes) > 1:
+                across = self.subcircuit.across_history[0]
+                across -= self.subcircuit.across_history[1]
+        else:
+            across = self.subcircuit.across_history[self.nodes[port1]]
+            if port2:
+                across -= self.subcircuit.across_history[self.nodes[port2]]
+        return across
+
+    def get_across(self, port1=None, port2=None, device=None):
+        """Get the across value between the nodes to which the given ports are attached.
+        If port2 is not provided, the across value returned is the across value of port1's
+        node with respect to ground.
+        """
+        across = float('inf')
+        if device:
+            nodes = self.subcircuit.devices[device].nodes
+            if len(nodes) > 1:
+                across = self.subcircuit.across_last[0]
+                across -= self.subcircuit.across_last[1]
+        else:
+            across = self.subcircuit.across_last[self.nodes[port1]]
+            if port2:
+                across -= self.subcircuit.across_last[self.nodes[port2]]
         return across
 
     def setup(self, dt):
@@ -98,8 +116,7 @@ class CurrentSensor():
 
 
 class Stimulus():
-    """
-    Represents an independant source simulus function (PULSE, SIN, etc). This class
+    """Represents an independant source simulus function (PULSE, SIN, etc). This class
     must be derived from and setup() and step() methods must be implemented.
     """
 
@@ -108,8 +125,8 @@ class Stimulus():
 
     def setup(self, dt):
         """Virtual method. Must be implemented by derived class."""
-        pass
+        raise NotImplementedError
 
     def step(self, t, dt):
         """Virtual method. Must be implemented by derived class."""
-        pass
+        raise NotImplementedError

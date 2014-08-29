@@ -23,6 +23,13 @@ from simulator import *
 from devices import *
 from interfaces import *
 
+
+# ============================== CONSTANTS ======================================
+GMIN = 1.0e-12
+ONE_OVER_GMIN = 1.0e12
+GMAX = 1.0e12
+
+
 # ============================== GLOBALS ========================================
 active_circuit = None
 active_simulator = None
