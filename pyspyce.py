@@ -28,6 +28,7 @@ from interfaces import *
 GMIN = 1.0e-12
 ONE_OVER_GMIN = 1.0e12
 GMAX = 1.0e12
+GND = 0
 
 
 # ============================== GLOBALS ========================================

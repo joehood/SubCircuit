@@ -1,4 +1,6 @@
-import pyspyce as ps
+
+
+from pyspyce import *
 import math
 
 
@@ -89,76 +91,112 @@ import math
 # simulator.trans(0.01, 4.0)
 # simulator.plot('tran', ps.Voltage(3), ps.Voltage(7))  # ps.Current('V1'))
 
+# cir = ps.Circuit("Switch Test")
+#
+# V1 = ps.V('V1', 1, 0, 4, value=10.0)
+# Vs = ps.V('Vs', 3, 0, 5, ps.Sin(0.0, 10.0, 10.0))
+# S1 = ps.S('S1', (1, 2, 6), vsource='Vs')
+# R1 = ps.R('R1', 2, 0, value=10.0)
+#
+# cir.add_devices(V1, Vs, S1, R1)
+#
+# sim = ps.Simulator(cir)
+#
+# sim.trans(0.01, 1.0)
+#
+# sim.plot('tran',
+#          ps.Voltage(2),
+#          ps.Voltage(3))
+
 
 """
 Boost Converter Example
 
-    1   L   2   D        3
-    .--uuu--o--->|---o-----.
-   +|   5   |        |     |
-  V( )4    6 /S(VC) [ ]R  === C
-    |       |        |     |
-    '-------o--------o-----'
-            0
 
-    7   RC
-    .--vvv--.
-   +|       |
- VC( )8     |
-    |       |
-    '-------'
-        0
+                   .-------------.
+                  _|_            |
+                  /_\  D         |
+                   |             |
+     1     L     2 |             | 3
+     .---()()()----o         .---o--.
+    +|    (5)      |         |      |
+    ,-.            |        [ ]    _|_
+ V ( = )(4)     (6) / S     | |R   ___ C
+    `-'            o        [ ]     |
+     |             |         |      |
+     '-------------o---------o------'
+                  _|_
+                   -
+     7
+     o
+   + |
+    ,-.
+VC (-_-)(8)
+    `-'
+    _|_
+     -
+
 
 """
+
 # circuit = ps.Circuit()
 # circuit.title = 'Boost Converter'
-# circuit.add_device(ps.V('VC', 7, 0, 8, ps.Pulse(v1=0.0, v2=1.0, pw=0.0005, per=0.001)))
-# circuit.add_device(ps.R('RC', 7, 0, value=100.0))
-# circuit.add_device(ps.V('V', 1, 0, 4, value=12.0))
-# circuit.add_device(ps.L('L', 1, 2, 5, value=0.0001))
-# circuit.add_device(ps.S('S', [2, 0, 6], vsource='VC', vt=0.5))
+#
+# circuit.add_device(ps.V('VC', 7, 0, 8,
+#                         ps.Pulse(v1=0.0, v2=1.0, pw=0.0005, per=0.001)))
+#
+# circuit.add_device(ps.V('V', 1, 0, 4, value=100.0))
+# circuit.add_device(ps.L('L', 1, 2, 5, value=0.001))
+# circuit.add_device(ps.S('S', (2, 0, 6), vsource='VC', vt=0.5))
 # circuit.add_device(ps.D('D', 2, 3))
 # circuit.add_device(ps.R('R', 3, 0, value=10.0))
-# circuit.add_device(ps.C('C', 3, 0, value=0.001))
+# circuit.add_device(ps.C('C', 3, 0, value=0.0001))
 # simulator = ps.Simulator(circuit)
-# simulator.trans(0.0001, 0.1)
-# simulator.plot('tran', ps.Voltage(3)) #, ps.Current('V'))
+# simulator.trans(0.0001, 0.01)
+# simulator.plot('tran',
+#                ps.Voltage(2),
+#                ps.Voltage(2),
+#                ps.Current('L'))
 
 
-# # Three-phase Rectifier:
-#
-# """
-#                                  4           Lf     6
-#                           .------o------o---UUUU----.
-#                           |      |      |           |
-#                          _|_    _|_    _|_          |
-#                       D1 /_\ D3 /_\ D5 /_\          o-------.
-#                           |      |      |           |       |
-#     .---------------------o 1    |      |           |       |
-#     |                     |      |      |          .-.     _|_
-#     |       .-------------|------o 2    |          | |RL   ___ Cf
-#     |       |             |      |      |          | |      |
-#    +|      +|      +.-----|------|------o 3        '-'      |
-#     |       |       |     |      |      |           |       |
-#    ,'.     ,'.     ,'.    |      |      |           o-------'
-# Va(   ) Vb(   ) Vc(   )   |      |      |           |
-#    `.'     `.'     `.'   _|_    _|_    _|_          |
-#     |       |       |    /_\ D2 /_\ D4 /_\ D6       |
-#     '-------+-------'     |      |      |           |
-#        0   _|_            '------o------o-----------'
-#             -                       5
-#
-# """
-#
-# alpha = 2.0 / 3.0 * math.pi
+"""
+Three-phase Rectifier:
+                                 4           Lf     6
+                          .------o------o---UUUU----.
+                          |      |      |           |
+                         _|_    _|_    _|_          |
+                         /_\ D1 /_\ D3 /_\ D5       o-------.
+                          |      |      |           |       |
+    .---------------------o 1    |      |           |       |
+    |                     |      |      |          .-.     _|_
+    |       .--------------------o 2    |          | |RL   ___ Cf
+    |       |             |      |      |          | |      |
+    |       |       .-------------------o 3        '-'      |
+   +|      +|      +|     |      |      |           |       |
+   ,'.     ,'.     ,'.    |      |      |           |       |
+Va(   ) Vb(   ) Vc(   )   |      |      |           o-------'
+   `.'     `.'     `.'   _|_    _|_    _|_          |
+    |       |       |    /_\ D2 /_\ D4 /_\ D6       |
+    '-------+-------'     |      |      |           |
+       0   _|_            '------o------o-----------'
+            -                       5
+
+"""
+
+# a = 2.0 / 3.0 * math.pi
 #
 # cir = ps.Circuit()
 #
 # cir.title = "Three-phase Rectifier"
 #
-# Va = ps.V('Va', 1, 0, 7, ps.Sin(va=80.0, freq=60.0, phi=0.0))
-# Vb = ps.V('Vb', 2, 0, 8, ps.Sin(va=80.0, freq=60.0, phi=alpha))
-# Vc = ps.V('Vc', 3, 0, 9, ps.Sin(va=80.0, freq=60.0, phi=-alpha))
+# Va = ps.V('Va', 1, 0, 7,
+#           ps.Sin(va=80.0, freq=60.0, phi=0.0), resistance=0.01, inductance=1e-4)
+#
+# Vb = ps.V('Vb', 2, 0, 8,
+#           ps.Sin(va=80.0, freq=60.0, phi=a), resistance=0.01, inductance=1e-4)
+#
+# Vc = ps.V('Vc', 3, 0, 9,
+#           ps.Sin(va=80.0, freq=60.0, phi=-a), resistance=0.01, inductance=1e-4)
 #
 # D1 = ps.D('D1', 1, 4)
 # D3 = ps.D('D3', 2, 4)
@@ -169,45 +207,51 @@ Boost Converter Example
 #
 # RL = ps.R('RL', 6, 5, 100.0)
 # Cf = ps.C('Cf', 6, 5, 0.001)
-# Lf = ps.L('Lf', 4, 6, 10, 0.001)
+# Lf = ps.L('Lf', 4, 6, 10, 0.0001)
 #
-# cir.add_devices(Va, Vb, Vc, D1, D2, D3, D4, D5, D6, RL, Cf, Lf)
+# V2 = ps.V('V2', 13, 0, 14, ps.Pulse(-1.0, 1.0, 0.05, pw=1.0))
+# S2 = ps.S('S2', (6, 11, 12), vsource='V2')
+# R2 = ps.R('R2', 11, 5, 10.0)
+#
+# cir.add_devices(Va, Vb, Vc, D1, D2, D3, D4, D5, D6, RL, Cf, Lf, V2, S2, R2)
 #
 # sim = ps.Simulator(cir)
-# sim.trans(0.0005, 0.1)
+# sim.trans(0.0001, 0.1)
 #
 # sim.plot('tran',
 #          ps.Voltage(1),
 #          ps.Voltage(2),
 #          ps.Voltage(3),
-#          ps.Voltage(6, 5))
-#
-#
-# # Three-phase Inverter:
-#
-# """
-#                                  2           Lf     1
-#                           .------o------o-------------.
-#                           |      |      |             |
-#                           o      o      o             |
-#                         S1 \   S3 \   S5 \            |
-#                           |      |      |             |
-#     .---------------------o 4    |      |             | +
-#     |                     |      |      |            ,-.
-#     |       .-------------|------o 5    |           (   ) Vdc
-#     |       |             |      |      |            `-'
-#     |       |       .-----|------|------o 6           |
-#     |       |       |     |      |      |             |
-#    .-.     .-.     .-.    |      |      |             |
-#  Ra| |   Rb| |   Rc| |    |      |      |             |
-#    '-'     '-'     '-'    o      o      o             |
-#     |       |       |      \S2    \S4    \S6          |
-#     '-------+-------'     |      |      |             |
-#        0   _|_            '------o------o-------------'
-#             -                       3
-#
-# """
-#
+#          ps.Current('Va'),
+#          ps.Current('Vb'),
+#          ps.Current('Vc'),
+#          ps.Voltage(6, 5),
+#          ps.Current('S2'))
+
+"""
+Three-phase Inverter
+                                 2           Lf     1
+                          .------o------o-------------.
+                          |      |      |             |
+                          o      o      o             |
+                        S1 \   S3 \   S5 \            |
+                          |      |      |             |
+    .---------------------o 4    |      |             | +
+    |                     |      |      |            ,-.
+    |       .-------------|------o 5    |           ( = ) Vdc
+    |       |             |      |      |            `-'
+    |       |       .-----|------|------o 6           |
+    |       |       |     |      |      |             |
+   .-.     .-.     .-.    |      |      |             |
+ Ra| |   Rb| |   Rc| |    |      |      |             |
+   '-'     '-'     '-'    o      o      o             |
+    |       |       |      \S2    \S4    \S6          |
+    '-------+-------'     |      |      |             |
+       0   _|_            '------o------o-------------'
+            -                       3
+
+"""
+
 # alpha = 2.0 / 3.0 * math.pi
 #
 # cir = ps.Circuit()
@@ -216,18 +260,33 @@ Boost Converter Example
 #
 # Vdc = ps.V('Va', 1, 0, 7, 150.0)
 #
-# S1 = ps.S('S1', 2, 4)
-# S3 = ps.S('S3', 2, 5)
-# S5 = ps.S('S5', 2, 6)
-# S2 = ps.S('S2', 4, 3)
-# S4 = ps.S('S4', 5, 3)
-# S6 = ps.S('S6', 6, 3)
+# Vs1 = ps.V('Vs', 14, 0, 15, ps.Sin(0.0, 1.0, 60.0, phi=0.0))
+# Vs3 = ps.V('Vs', 16, 0, 17, ps.Sin(0.0, 1.0, 60.0, phi=alpha))
+# Vs5 = ps.V('Vs', 18, 0, 19, ps.Sin(0.0, 1.0, 60.0, phi=-alpha))
+# Vs2 = ps.V('Vs', 20, 0, 21, ps.Sin(0.0, 1.0, 60.0, phi=0.0))
+# Vs4 = ps.V('Vs', 22, 0, 23, ps.Sin(0.0, 1.0, 60.0, phi=alpha))
+# Vs6 = ps.V('Vs', 24, 0, 25, ps.Sin(0.0, 1.0, 60.0, phi=-alpha))
+#
+# Vt = ps.V('Vt', 26, 0, 27,
+#           ps.Pulse(v1=-1, v2=1, tr=0.001, tf=0.001, pw=0.0, per=0.002))
+#
+# Ec = ps.E('Ec', 28, 0, 2, 1, 29,
+#            value=ps.Table((-0.00001, 0.0), (0.00001, 1.0e12)), limit=1.0)
+#
+# Rca = ps.R('RL', 3, 0, 0.001)
+#
+# S1 = ps.S('S1', (2, 4, 8), vsource='Rca')
+# S3 = ps.S('S3', (2, 5, 9), vsource='Vs3')
+# S5 = ps.S('S5', (2, 6, 10), vsource='Vs5')
+# S2 = ps.S('S2', (4, 3, 11), vsource='Vs2')
+# S4 = ps.S('S4', (5, 3, 12), vsource='Vs4')
+# S6 = ps.S('S6', (6, 3, 13), vsource='Vs6')
 #
 # Ra = ps.R('Ra', 4, 0, 100.0)
 # Rb = ps.R('Rb', 5, 0, 100.0)
 # Rc = ps.R('Rc', 6, 0, 100.0)
 #
-# cir.add_devices(Va, Vb, Vc, D1, D2, D3, D4, D5, D6, RL, Cf, Lf)
+# cir.add_devices(Vdc, Vt, Vsa, Vsb, Vsc, S1, S2, S3, S4, S5, S6, Ra, Rb, Rc)
 #
 # sim = ps.Simulator(cir)
 # sim.trans(0.0005, 0.1)
@@ -238,25 +297,66 @@ Boost Converter Example
 #          ps.Voltage(3),
 #          ps.Voltage(6, 5))
 
+"""
+PWM Test
 
-cir = ps.Circuit()
-cir.title = "Saw Wave Stimulus Test and VCVS (E) Test"
+       1          .--------.    3
+     .------------|        |------.
+     |            |        |     [ ]
+    ,-.       2   |  Ec    |     | | RL
+Vt ( ^ )(4)  .----|  (6)   |     [ ]
+    `-'      |    |        |---.--'
+    _|_     ,-.   '--------'  _|_
+     -  Vs ( ~ )(5)               -
+            `-'
+            _|_
+             -
+"""
 
-Vs = ps.V('Vs', 1, 0, 3,
-          ps.Pulse(v1=-10, v2=10, tr=0.1, tf=0.1, pw=0.0, per=0.2))
 
-Ec = ps.E('Ec', 2, 0, 1, 0, 4, 10.0)
-RL = ps.R('RL', 2, 0, 10.0)
+# cir = ps.Circuit("Saw Wave Stimulus Test and VCVS (E) Test")
+#
+# Vt = ps.V('Vt', 1, 0, 7,
+#           ps.Pulse(v1=-1, v2=1, tr=0.001, tf=0.001, pw=0.0, per=0.002))
+#
+# Vs = ps.V('Vs', 2, 0, 8,
+#           ps.Sin(0.0, 1.0, 60.0))
+#
+# Ec = ps.E('Ec', 3, 0, 2, 1, 9,
+#           ps.Table((-0.00001, 0.0), (0.00001, 1.0e12)), limit=1.0)
+#
+# Vg = ps.V('Vg', 4, 0, 10, value=100.0)
+#
+# Sg = ps.S('Sg', (4, 5, 11), vsource='Ec', vt=0.0)
+#
+# Rg = ps.R('Rg', 6, 0, value=10.0)
+#
+# Lg = ps.L('Lg', 5, 6, 12, 0.001)
+#
+# Cg = ps.C('Cg', 6, 0, 0.0001)
+#
+#
+# cir.add_devices(Vt, Vs, Ec, Vg, Sg, Rg, Cg, Lg)
+#
+# sim = ps.Simulator(cir)
+#
+# sim.trans(0.0001, 0.1)
+#
+# sim.plot('tran',
+#          ps.Voltage(2),
+#          ps.Voltage(3),
+#          ps.Voltage(6))
 
-cir.add_devices(Vs, Ec, RL)
 
-sim = ps.Simulator(cir)
+cir = Circuit("Subcircuit Test")
 
-sim.trans(0.01, 1.0)
+cir.add('V1', V('input', 'ground', Sin(0.0, 10.0, 60.0)))
+cir.add('R1', R('input', 'output', 10.0))
+cir.add('R2', R('output', 'ground', 10.0))
 
-sim.plot('tran',
-         ps.Voltage(1),
-         ps.Voltage(2),
-         ps.Current('Vs'),
-         ps.Current('Ec'))
+cir.trans(0.001, 0.1)
+
+cir.plot(Voltage('input'),
+         Voltage('output'),
+         Current('V1'))
 

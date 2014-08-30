@@ -1,6 +1,8 @@
 """Contains Circuit and SubCircuit class definitions."""
 
 from __future__ import print_function
+import interfaces
+import simulator
 import numpy
 import numpy.linalg as la
 
@@ -8,24 +10,22 @@ import numpy.linalg as la
 class SubCircuit():
     """A SPICE subcircuit (.subckt) object. """
 
-    def __init__(self, parent, name=None):
+    def __init__(self, parent):
         """Creates an empty SubCircuit.
 
         Arguments:
         parent -- the parent circuit or subcircuit.
         name   -- optional name.
         """
-        self.nodes = 0
-        self.across = None
-        self.across_last = None
-        self.across_history = None
+        self.nodes = {0: 0, 'ground': 0, 'gnd': 0}  # pre-load with ground node
+        self.nodenum = 1
+        self.internalnum = 0
+        self.across = None  # across at current time and iteration
+        self.across_last = None  # across at last iteration
+        self.across_history = None  # across at end of last time step
         self.jac = None
         self.bequiv = None
-        self.across_last = None
-        self.across_history = None
-        self.across_last = None
         self.devices = {}
-        self.name = name
         self.converged = False
         self.simulator = None
         self.dt = 0.0
@@ -36,32 +36,29 @@ class SubCircuit():
         """
         self.jac[:, :] = 0.0
         self.bequiv[:] = 0.0
-        for name, device in self.devices.items():
-            for ni in device.nodes:
-                pi = device.node2port[ni]
+        for device in self.devices.values():
+            for pi, ni in device.nodes.items():
                 self.bequiv[ni] += device.bequiv[pi]
-                for nj in device.nodes:
-                    pj = device.node2port[nj]
+                for pj, nj in device.nodes.items():
                     self.jac[ni, nj] += device.jac[pi, pj]
+        dummy = False
 
     def setup(self, dt):
         """Calls setup() on all of this subcircuit devices.
         Setup is called at the beginning of the simulation and allows the
         intial stamps to be applied.
         """
-        # determine node size:
-        self.dt = dt
-        for name, device in self.devices.items():
-            device.setup(dt)
-            highest_node = max(device.nodes)  # increment the subcircuit nodes
-            self.nodes = max(self.nodes, highest_node + 1)
 
         # dimension matrices:
-        self.across = numpy.zeros(self.nodes)
-        self.across_last = numpy.zeros(self.nodes)
-        self.across_history = numpy.zeros(self.nodes)
-        self.jac = numpy.zeros((self.nodes, self.nodes))
-        self.bequiv = numpy.zeros(self.nodes)
+        self.across = numpy.zeros(self.nodenum)
+        self.across_last = numpy.zeros(self.nodenum)
+        self.across_history = numpy.zeros(self.nodenum)
+        self.jac = numpy.zeros((self.nodenum, self.nodenum))
+        self.bequiv = numpy.zeros(self.nodenum)
+
+        # setup devices:
+        for device in self.devices.values():
+            device.setup(dt)
 
         # stamp the ciruit:
         self.stamp()
@@ -89,14 +86,18 @@ class SubCircuit():
         self.across_history = numpy.copy(self.across)  # save off across history
 
         # FOR DEBUGGING: code for dumping matrices:
-        string = ""
-        for i in range(self.nodes-1):
-            row = ""
-            for j in range(self.nodes-1):
-                row += "{0:8.2g}  ".format(self.jac[i+1, j+1].astype(float))
-            row += "    |     {0:8.2g}".format(self.across[i+1].astype(float))
-            string += row + "    |     {0:8.2g}".format(self.bequiv[i+1].astype(float)) + '\n'
-        print(string)
+        if 1:
+            mstr = ""
+            for i in range(self.nodenum-1):
+                row = ""
+                for j in range(self.nodenum-1):
+                    s = "{0:8.2g}  "
+                    row += s.format(self.jac[i+1, j+1].astype(float))
+                s = "    |     {0:8.2g}"
+                row += s.format(self.across[i+1].astype(float))
+                s = "    |     {0:8.2g}"
+                mstr += row + s.format(self.bequiv[i+1].astype(float)) + '\n'
+            print(mstr)
 
         return success
 
@@ -112,7 +113,7 @@ class SubCircuit():
         success = True
 
         # minor step all devices in this subcircuit:
-        for name, device in self.devices.items():
+        for device in self.devices.values():
             device.minor_step(k, t, dt)
 
         # re-stamp the subcircuit matrices with the updated information:
@@ -140,29 +141,29 @@ class SubCircuit():
 
         return success
 
-    def add_device(self, device):
-        """Adds a device to the subcircuit.
-        Arguments:
-        device -- the Device to add.
-        """
-        device.subcircuit = self
-        if not device.name in self.devices:  # if the name is unique
-            self.devices[device.name] = device  # add the device, name is key
+    def get_node_index(self, key):
+        key = key.lower()  # node keys are not case sensitive
+        if not key in self.nodes:
+            self.nodenum += 1
+            self.nodes[key] = self.nodenum - 1
+        return self.nodes[key]
 
-        else:
-            # TODO: throw duplicate device name exception (or auto-name?)
-            # no, can't auto-name because user needs to use key to index
-            # ...or does he? maybe go with straight OOP method and require
-            # user to use object reference and not names as keys??
-            pass
+    def create_internal(self):
+        self.nodenum += 1
+        self.internalnum += 1
+        key = 'internal{0}'.format(self.internalnum - 1)
+        self.nodes[key] = self.nodenum - 1
+        return self.nodenum - 1
 
-    def add_devices(self, *devices):
-        """Add multiple devices to subcircuit.
-        :param devices: Devices to add.
-        :return: None
+    def add(self, name, device):
+        """Device factory and loader.
         """
-        for device in devices:
-            self.add_device(device)
+        if not name in self.devices:
+            self.devices[name] = device
+            device.name = name
+            device.subcircuit = self
+            device.map_nodes()
+
 
 
 class Circuit(SubCircuit):
@@ -180,13 +181,55 @@ class Circuit(SubCircuit):
        by devices contained within itself or within it's children SubCircuits
     """
 
-    def __init__(self):
+    def __init__(self, title=''):
         """Creates a circuit object."""
         SubCircuit.__init__(self, parent=None)
         self.models = {}
-        self.title = ''
+        self.title = title
+        self.simulator = simulator.Simulator(self)
 
     def add_model(self, model):
         """Add a model (.model) definition to the Circuit."""
         self.models[model.name] = model
+
+    def trans(self, tstep, tstop, tstart=None, tmax=None, uic=False):
+        """
+        Run transient simulation.
+        :param tstep: Time step in seconds
+        :param tstop: Simulation stop time in seconds
+        :param tstart: TODO
+        :param tmax: TODO
+        :param uic: Flag for use initial conditions
+        :return: None
+        """
+        self.simulator.trans(tstep, tstop, tstart, tmax, uic)
+
+    def plot(self, *variables, **kwargs):
+        """.PLOT Lines
+        General form:
+        .PLOT PLTYPE OV1 <(PLO1, PHI1)> <OV2; <(PLO2, PHI2)> ... OV8>
+        Examples:
+        .PLOT DC V(4) V(5) V(1)
+        .PLOT TRAN V(17, 5) (2, 5) I(VIN) V(17) (1, 9)
+        .PLOT AC VM(5) VM(31, 24) VDB(5) VP(5)
+        .PLOT DISTO HD2 HD3(R) SIM2
+        .PLOT TRAN V(5, 3) V(4) (0, 5) V(7) (0, 10)
+        The Plot line defines the contents of one plot of from one to eight
+        output variables. PLTYPE is the type of analysis (DC, AC, TRAN, NOISE,
+        or DISTO) for which the specified outputs are desired. The syntax for
+        the OVI is identical to that for the .PRINT line and for the plot
+        command in the interactive mode. The overlap of two or more traces on
+        any plot is indicated by the letter X. When more than one output
+        variable appears on the same plot, the first variable specified is
+        printed as well as plotted. If a printout of all variables is desired,
+        then a companion .PRINT line should be included. There is no limit on
+        the number of .PLOT lines specified for each type of analysis.
+
+        :param variables: Plottables. Example: Voltage(1,2), Current('VSENSE')
+        :param kwargs: TODO
+        :return: None
+        """
+        return self.simulator.plot(self, *variables, **kwargs)
+
+
 

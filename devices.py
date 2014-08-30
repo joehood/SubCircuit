@@ -11,12 +11,11 @@ import pyspyce
 
 
 class R(Device):
-    """
-    A SPICE R (resistor or semiconductor resistor) device.
-    """
+    """A SPICE R (resistor or semiconductor resistor) device."""
 
-    def __init__(self, name, node1, node2, value, rmodel=None, l=None, w=None,
-                 temp=None, **kwargs):
+    def __init__(self, nplus, nminus, value,
+                 rmodel=None, l=None, w=None, temp=None, **kwargs):
+
         """General form:
         RXXXXXXX N1 N2 VALUE
         Examples:
@@ -33,11 +32,23 @@ class R(Device):
         RLOAD 2 10 10K
         RMOD 3 7 RMODEL L=10u W=1u
         """
-        Device.__init__(self, name, ports=2)
-        self.nodes = [node1, node2]  # define nodes list
-        self.node2port = {node1: 0,
-                          node2: 1}  # define system node to device port mapping
-        self.value = value  # store value (resistance in ohms)
+        Device.__init__(self, 2, **kwargs)
+
+        # save arguments:
+        self.nplus = nplus
+        self.nminus = nminus
+        self.value = value
+        self.rmodel = rmodel
+        self.l = l
+        self.w = w
+        self.temp = temp
+
+    def map_nodes(self):
+        assert self.subcircuit is not None
+        nplus_index = self.subcircuit.get_node_index(self.nplus)
+        nminus_index = self.subcircuit.get_node_index(self.nminus)
+        self.nodes = {0: nplus_index,
+                          1: nminus_index}
 
     def setup(self, dt):
         """Define the resistor jacobian stamp.
@@ -120,8 +131,7 @@ class C(Device):
         self.jac[1, 1] = self.value / dt
 
     def step(self, t, dt):
-        vc = self.subcircuit.across_history[self.nodes[1]] - \
-             self.subcircuit.across_history[self.nodes[0]]
+        vc = self.get_across_history(1) - self.get_across_history(0)
         self.bequiv[0] = -self.value / dt * vc
         self.bequiv[1] = self.value / dt * vc
 
@@ -159,6 +169,9 @@ class L(Device, CurrentSensor):
     def step(self, t, dt):
         inductor_current = self.subcircuit.across_history[self.nodes[2]]
         self.bequiv[2] = self.value / dt * inductor_current
+
+    def get_current_node(self):
+        return self.nodes[2]
 
 
 class K(Device):
@@ -216,7 +229,7 @@ class K(Device):
         self.bequiv[5] = self.mutual / dt * current1
 
 
-class S(Device):
+class S(Device, CurrentSensor):
     """
     General form:
 
@@ -232,43 +245,54 @@ class S(Device):
     W2 3 0 vramp sm1 ON
     wreset 5 6 vclck lossyswitch OFF
 
-    Nodes 1 and 2 are the nodes between which the switch terminals are connected. The model name is mandatory while the
-    initial conditions are optional. For the voltage controlled switch, nodes 3 and 4 are the positive and negative
-    controlling nodes respectively. For the current controlled switch, the controlling current is that through the
-    specified voltage source. The direction of positive controlling current flow is from the positive node, through
-    the source, to the negative node.
+    Nodes 1 and 2 are the nodes between which the switch terminals are
+    connected. The model name is mandatory while the initial conditions are
+    optional. For the voltage controlled switch, nodes 3 and 4 are the positive
+    and negative controlling nodes respectively. For the current controlled
+    switch, the controlling current is that through the specified voltage
+    source. The direction of positive controlling current flow is from the
+    positive node, through the source, to the negative node.
 
     Switch Model (SW/CSW)
 
-    The switch model allows an almost ideal switch to be described in SPICE. The switch is not quite ideal, in that the
-    resistance can not change from 0 to infinity, but must always have a finite positive value. By proper selection of
-    the on and off resistances, they can be effectively zero and infinity in comparison to other circuit elements. The
-    parameters available are:
+    The switch model allows an almost ideal switch to be described in SPICE.
+    The switch is not quite ideal, in that the resistance can not change from 0
+    to infinity, but must always have a finite positive value. By proper
+    selection of the on and off resistances, they can be effectively zero and
+    infinity in comparison to other circuit elements. The parameters available
+    are:
 
-    name	parameter	units	default	switch
-    VT	threshold voltage	Volts	0.0	S
-    IT	threshold current	Amps	0.0	W
-    VH	hysteresis voltage	Volts	0.0	S
-    IH	hysteresis current	Amps	0.0	W
-    RON	on resistance	Z	1.0	both
-    ROFF	off resistance	Z	1/GMIN*	both
+    name   parameter            units    default  switch
+    ----------------------------------------------------
+    VT     threshold voltage    Volts    0.0      S
+    IT     threshold current    Amps     0.0      W
+    VH     hysteresis voltage   Volts    0.0      S
+    IH     hysteresis current   Amps     0.0      W
+    RON    on resistance        Z        1.0      both
+    ROFF   off resistance       Z        1/GMIN*  both
 
-    *(See the .OPTIONS control line for a description of GMIN, its default value results in an off-resistance of
-    1.0e+12 ohms.)
+    *(See the .OPTIONS control line for a description of GMIN, its default
+    value results in an off-resistance of 1.0e+12 ohms.)
 
-    The use of an ideal element that is highly nonlinear such as a switch can cause large discontinuities to occur in
-    the circuit node voltages. A rapid change such as that associated with a switch changing state can cause numerical
-    roundoff or tolerance problems leading to erroneous results or timestep difficulties. The user of switches can
-    improve the situation by taking the following steps: First, it is wise to set ideal switch impedances just high or
-    low enough to be negligible with respect to other circuit elements. Using switch impedances that are close to
-    "ideal" in all cases aggravates the problem of discontinuities mentioned above. Of course, when modeling real
-    devices such as MOSFETS, the on resistance should be adjusted to a realistic level depending on the size of the
-    device being modeled. If a wide range of ON to OFF resistance must be used in the switches (ROFF/RON >1e+12), then
-    the tolerance on errors allowed during transient analysis should be decreased by using the .OPTIONS control line
-    and specifying TRTOL to be less than the default value of 7.0. When switches are placed around capacitors, then the
-    option CHGTOL should also be reduced. Suggested values for these two options are 1.0 and 1e-16 respectively. These
-    changes inform SPICE3 to be more careful around the switch points so that no errors are made due to the rapid
-    change in the circuit.
+    The use of an ideal element that is highly nonlinear such as a switch can
+    cause large discontinuities to occur in the circuit node voltages. A rapid
+    change such as that associated with a switch changing state can cause
+    numerical roundoff or tolerance problems leading to erroneous results or
+    timestep difficulties. The user of switches can improve the situation by
+    taking the following steps: First, it is wise to set ideal switch impedances
+    just high or low enough to be negligible with respect to other circuit
+    elements. Using switch impedances that are close to "ideal" in all cases
+    aggravates the problem of discontinuities mentioned above. Of course, when
+    modeling real devices such as MOSFETS, the on resistance should be adjusted
+    to a realistic level depending on the size of the device being modeled. If
+    a wide range of ON to OFF resistance must be used in the switches
+    (ROFF/RON >1e+12), then the tolerance on errors allowed during transient
+    analysis should be decreased by using the .OPTIONS control line and
+    specifying TRTOL to be less than the default value of 7.0. When switches
+    are placed around capacitors, then the option CHGTOL should also be reduced.
+    Suggested values for these two options are 1.0 and 1e-16 respectively. These
+    changes inform SPICE3 to be more careful around the switch points so that no
+    errors are made due to the rapid change in the circuit.
     """
 
     def __init__(self, name, nodes, model=None, vsource=None, on=False,
@@ -348,12 +372,12 @@ class S(Device):
         self.bequiv[2] = 0.0
 
     def step(self, t, dt):
-        """Do nothing here. Non-linear device behavior is modeled in minor_step()."""
+        """Do nothing here. Non-linear behavior is modeled in minor_step()."""
         pass
 
     def minor_step(self, k, t, dt):
         """
-        Update the jacobian and b-equivalent for this switch for the current minor step iteration.
+        Update the jacobian and b-equivalent for this switch for this iteration.
         :param k: current netwon iteration index
         :param t: current time
         :param dt: current timestep
@@ -363,21 +387,28 @@ class S(Device):
         # determine control signal:
         control_signal = 0.0
         if self.vsource:
-            control_signal = -self.get_across(device=self.vsource)
+            control_signal = self.get_across(external_device=self.vsource)
         else:
             control_signal = self.get_across(self.cnode1, self.cnode2)
 
-        # determine switch state and transition if necessary:
+        # determine switch state and transition/update jac if necessary:
         if control_signal >= self.vt:
             if not self.state:
                 self.state = True
                 self.jac[2, 2] = -self.ron
-                # self.bequiv[2] = self.get_across(0, 1)
         elif control_signal < self.vt:
             if self.state:
                 self.state = False
                 self.jac[2, 2] = -self.roff
-                # self.bequiv[2] = -(self.ron * self.get_across(2))
+
+        # update beq:
+        if self.state:
+            self.bequiv[2] = -(self.ron * self.get_across(2))
+        else:
+            self.bequiv[2] = self.get_across(0, 1)
+
+    def get_current_node(self):
+        return self.nodes[2]
 
 
 class W(Device):
@@ -390,8 +421,7 @@ class W(Device):
 class V(Device, CurrentSensor):
     """A SPICE Voltage source or current sensor."""
 
-    def __init__(self, name, node1, node2, internal,
-                 value, resistance=0.0, inductance=0.0, **kwargs):
+    def __init__(self, nplus, nminus, value, res=0.0, induct=0.0, **kwargs):
 
         """Create a new SPICE Diode device instance.
         General form:
@@ -437,26 +467,37 @@ class V(Device, CurrentSensor):
         are omitted or set to zero, the default values shown are assumed. (TSTEP is the printing
         increment and TSTOP is the final time (see the .TRAN control line for explanation)).
         """
-        Device.__init__(self, name, 3)  # three port device (one internal node)
-        self.nodes = [node1, node2, internal]
-        self.node2port = {node1: 0, node2: 1, internal: 2}
+        Device.__init__(self, 3, **kwargs)
 
-        self.stimulus = None
+        self.nplus = nplus
+        self.nminus = nminus
+
+        # determine type of value provided:
         if isinstance(value, Stimulus):
             self.stimulus = value
             self.stimulus.device = self
-        else:
-            self.value = value
+        elif isinstance(value, float) or isinstance(value, int):
+            self.stimulus = None
+            self.value = float(value)
 
-        self.resistance = resistance
-        self.inductance = inductance
+        self.res = res
+        self.induct = induct
+
+    def map_nodes(self):
+        assert self.subcircuit is not None
+        nplus_index = self.subcircuit.get_node_index(self.nplus)
+        nminus_index = self.subcircuit.get_node_index(self.nminus)
+        internal_index = self.subcircuit.create_internal()
+        self.nodes = {0: nplus_index,
+                          1: nminus_index,
+                          2: internal_index}
 
     def setup(self, dt):
         self.jac[0, 2] = 1.0
         self.jac[1, 2] = -1.0
         self.jac[2, 0] = 1.0
         self.jac[2, 1] = -1.0
-        self.jac[2, 2] = -self.resistance + -self.inductance / dt
+        self.jac[2, 2] = -(self.res + self.induct / dt)
 
         volt = 0.0
         if self.stimulus:
@@ -474,18 +515,18 @@ class V(Device, CurrentSensor):
         else:
             volt = self.value
 
-        if self.inductance:
+        if self.induct:
             il = self.get_across_history(2)
-            volt += self.inductance / dt * il
+            volt += self.induct / dt * il
 
         self.bequiv[2] = volt
 
     def get_current_node(self):
+        """So this device can be used as a current sensor.
+        This function returns the node index of the internal current state
+        variable node.
         """
-        So this device can be used as a current sensor, this function returns the
-        node index of the internal current state variable node.
-        """
-        return self.nodes[2]
+        return self.nodes[2], -1.0
 
 
 class I(Device):
@@ -552,9 +593,25 @@ class E(Device, CurrentSensor):
     """A SPICE E (VCVS) device."""
 
     def __init__(self, name, nplus, nminus, ncplus, ncminus, internal,
-                 value=1.0, **kwargs):
+                 value=1.0, limit=None, **kwargs):
 
-        """General form:
+        """Create a new SPICE E (VCVS) device.
+
+        :param name: Name of device. Must be unique within the subcircuit
+        :param nplus: Positive port on secondary
+        :param nminus: Negative port on secondary
+        :param ncplus: Positive port on primary (control)
+        :param ncminus: Negative port on primary (control)
+        :param internal: Internal node for branch current
+        :param value: Either fixed value or transfer function table
+        Examples:
+        value=10.0  # fixed value
+        value=Table((-1, 0), (0, 0), (0.0001, 1))  # lookup table
+        TODO: add stimulus option.
+        :param kwargs: Additional keyword arguments
+        :return: New E instance
+
+        General form:
 
             EXXXXXXX N+ N- NC+ NC- VALUE
 
@@ -575,22 +632,49 @@ class E(Device, CurrentSensor):
                           ncminus: 3,
                           internal: 4}  # define node-to-port mapping
 
-        self.value = value  # store value (gain)
+        self.gain = None
+        self.table = None
+
+        if isinstance(value, float) or isinstance(value, int):
+            self.gain = float(value)
+
+        elif isinstance(value, Table):
+            self.table = value
+
+        self.subcircuit = None
+        self.limit = limit
 
     def setup(self, dt):
-        """Define the VCVS jacobian stamp."""
-        np, nm, ncp, ncm, ik = 0, 1, 2, 3, 4
+        """Define the initial VCVS jacobian stamp."""
 
-        self.jac[np, ik] = 1.0
-        self.jac[nm, ik] = -1.0
-        self.jac[ik, np] = -1.0
-        self.jac[ik, nm] = 1.0
-        self.jac[ik, ncp] = self.value
-        self.jac[ik, ncm] = -self.value
+        if self.gain:
+            k = self.gain
+        else:
+            k = 0.0
+
+        self.jac[0, 4] = 1.0
+        self.jac[1, 4] = -1.0
+        self.jac[4, 0] = -1.0
+        self.jac[4, 1] = 1.0
+        self.jac[4, 2] = k
+        self.jac[4, 3] = -k
 
     def step(self, t, dt):
-        """Do nothing here. Linear and time-invariant device."""
-        pass
+        """TODO Doc"""
+
+        if self.table:
+            vc = self.get_across(2, 3)
+            k = self.table.output(vc)  # get gain for this control voltage
+
+            if self.limit and not vc == 0.0:
+                if vc * k > self.limit:
+                    k = self.limit / vc
+                if vc * k < -self.limit:
+                    k = -self.limit / vc
+
+            self.jac[4, 2] = k
+            self.jac[4, 3] = -k
+
 
     def get_current_node(self):
         """Return the current node."""
@@ -1055,7 +1139,7 @@ class Pulse(Stimulus):
         if self.pw is None:
             self.pw = dt
         if self.per is None:
-            self.per = self.td + 3.0 * dt
+            self.per = float('inf')
         return self.v1
 
     def step(self, t, dt):
@@ -1064,10 +1148,10 @@ class Pulse(Stimulus):
             return self.v2
         elif self.td <= t < (self.td + self.tr):
             return self.v1 + (self.v2 - self.v1) * (t - self.td) / self.tr
-        elif (self.td + self.tr + self.pw) <= t < (
-                    self.td + self.tr + self.pw + self.tf):
-            return self.v2 + (self.v1 - self.v2) * (
-            t - (self.td + self.tr + self.pw)) / self.tf
+        elif ((self.td + self.tr + self.pw) <= t <
+              (self.td + self.tr + self.pw + self.tf)):
+            return (self.v2 + (self.v1 - self.v2) *
+                    (t - (self.td + self.tr + self.pw)) / self.tf)
         else:
             return self.v1
 
@@ -1186,9 +1270,9 @@ class Pwl(Stimulus):
 
     def step(self, dt):
         x = self.device.get_time()
-        return self.interp(x)
+        return self._interp_(x)
 
-    def interp(self, x):
+    def _interp_(self, x):
         if x <= self.xp[0]:
             return self.yp[0]
         elif x >= self.xp[-1]:

@@ -134,7 +134,7 @@ class Simulator():
         self.circuit.setup(tstep)
 
         # allocate the arrays and save to variables for plot():
-        self.trans_data = numpy.zeros((self.circuit.nodes, n))
+        self.trans_data = numpy.zeros((self.circuit.nodenum, n))
         self.trans_time = numpy.zeros(n)  # array for time values
 
         # step through time evolution of the network and save off across data
@@ -155,7 +155,7 @@ class Simulator():
     def print_(self):
         raise NotImplementedError()
 
-    def plot(self, pltype, *variables, **kwargs):
+    def plot(self, *variables, **kwargs):
 
         """.PLOT Lines
         General form:
@@ -177,7 +177,6 @@ class Simulator():
         then a companion .PRINT line should be included. There is no limit on
         the number of .PLOT lines specified for each type of analysis.
 
-        :param pltype: Plot type. Only 'tran' is currently supported.
         :param variables: Plottables. Example: Voltage(1,2), Current('VSENSE')
         :param kwargs: TODO
         :return: None
@@ -188,42 +187,44 @@ class Simulator():
             notebook = kwargs['notebook']
         plot_panel = None
 
-        if pltype.lower() == 'tran':
-            curves = []
-            for variable in variables:
-                trace = None
-                label = ''
-                if isinstance(variable, Voltage):
-                    trace = (self.trans_data[variable.node1, :] -
-                             self.trans_data[variable.node2, :])
-                    if variable.node2 == 0:
-                        label = 'V({0:d})'.format(variable.node1)
-                    else:
-                        s = 'V({0:d},{1:d})'
-                        label = s.format(variable.node1, variable.node2)
-                elif isinstance(variable, Current):
-                    device = self.circuit.devices[variable.vsource]
-                    if isinstance(device, CurrentSensor):
-                        trace = -self.trans_data[device.get_current_node(), :]
-                        label = 'I({0})'.format(variable.vsource)
-                if trace is not None:
-                    curves.append((self.trans_time, trace, label))
+        curves = []
+        for variable in variables:
+            trace = None
+            label = ''
+            if isinstance(variable, Voltage):
+                node1_index = self.circuit.nodes[variable.node1]
+                node2_index = self.circuit.nodes[variable.node2]
+                trace = (self.trans_data[node1_index, :] -
+                         self.trans_data[node2_index, :])
+                if variable.node2 == 0:
+                    label = 'V({0})'.format(variable.node1)
+                else:
+                    s = 'V({0}, {1})'
+                    label = s.format(variable.node1, variable.node2)
+            elif isinstance(variable, Current):
+                device = self.circuit.devices[variable.vsource]
+                if isinstance(device, CurrentSensor):
+                    node, scale = device.get_current_node()
+                    trace = self.trans_data[node, :] * scale
+                    label = 'I({0})'.format(variable.vsource)
+            if trace is not None:
+                curves.append((self.trans_time, trace, label))
 
-            if notebook:
-                plot_panel = wxpyspyce.PlotPanel(notebook)
-                notebook.AddPage(plot_panel, 'Plot', True)
-                plot_panel.set_data(curves)
-                plot_panel.draw()
+        if notebook:
+            plot_panel = wxpyspyce.PlotPanel(notebook)
+            notebook.AddPage(plot_panel, 'Plot', True)
+            plot_panel.set_data(curves)
+            plot_panel.draw()
 
-            else:
-                plt.figure()
-                for curve in curves:
-                    x, y, label = curve
-                    plt.plot(x, y, label=label)
-                    plt.title(self.circuit.title)
-                    plt.legend()
-                    plt.xlabel('t (s)')
-                plt.show()
+        else:
+            plt.figure()
+            for curve in curves:
+                x, y, label = curve
+                plt.plot(x, y, label=label)
+                plt.title(self.circuit.title)
+                plt.legend()
+                plt.xlabel('t (s)')
+            plt.show()
 
         return plot_panel
 
