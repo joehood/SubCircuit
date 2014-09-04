@@ -348,15 +348,21 @@ Vt ( ^ )(4)  .----|  (6)   |     [ ]
 #          ps.Voltage(6))
 
 
-cir = Circuit("Subcircuit Test")
+# create netlist and add a title:
+netlist = Netlist('Subcircuit Test')
 
-cir.add('V1', V('input', 'ground', Sin(0.0, 10.0, 60.0)))
-cir.add('R1', R('input', 'output', 10.0))
-cir.add('R2', R('output', 'ground', 10.0))
+# define a subcircuit definition:
+rlc = netlist.subckt('rlc', Subckt(1, 2, r1=10.0))
+rlc.device('R1', R([1, 3], value=10.0))
+rlc.device('R2', R([3, 2], value=20.0))
 
-cir.trans(0.001, 0.1)
+# add devices and subcircuit instances to circuit:
+netlist.device('V1', V(['input', 'ground'], value=Sin(0.0, 10.0, 60.0)))
+netlist.device('R1', R(['input', 'output'], value=10.0))
+netlist.device('R2', R(['output', 'ground'], value=10.0))
+netlist.device('X1', X(['output', 'ground'], subckt='rlc'))
 
-cir.plot(Voltage('input'),
-         Voltage('output'),
-         Current('V1'))
+# run the transient simulation and plot some variables:
+netlist.trans(0.001, 0.1)
+netlist.plot(Voltage('input'), Voltage('output'), Current('V1'))
 

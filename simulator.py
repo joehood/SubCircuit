@@ -3,6 +3,7 @@
 from __future__ import print_function
 
 import matplotlib.pyplot as plt
+from netlist import *
 
 try:
     import wx
@@ -10,15 +11,13 @@ try:
 except:
     pass
 
-from interfaces import *
 
-
-class Plotable:
+class Plottable:
     def __init__(self):
         pass
 
 
-class Voltage(Plotable):
+class Voltage(Plottable):
     """Represents a plottable voltage value."""
 
     def __init__(self, node1=None, node2=0, device=None):
@@ -27,6 +26,7 @@ class Voltage(Plotable):
         :param node1: The circuit node for the positive voltage
         :param node2: The circuit node for the negative voltage (0 by default)
         """
+        Plottable.__init__(self)
         self.device = None
         self.node1 = None
         self.node2 = None
@@ -37,7 +37,8 @@ class Voltage(Plotable):
             self.node2 = node2
 
 
-class Current(Plotable):
+
+class Current(Plottable):
     """Represents a plottable current value."""
 
     def __init__(self, vsource):
@@ -45,6 +46,7 @@ class Current(Plotable):
         Arguments:
         vsource -- The name of the current-providing device.
         """
+        Plottable.__init__(self)
         self.vsource = vsource
 
 

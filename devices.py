@@ -2,18 +2,29 @@
 
 
 import math
-
 from interfaces import *
 import pyspyce
 
 
-# Elementary Devices:
+# subcircuit Device:
 
+class X(Device):
+    def __init__(self, nodes, subckt, **parameters):
+        Device.__init__(self, 0, **parameters)
+        self.nodes = nodes
+        self.subckt = subckt
+        self.parameters = parameters
+
+    def map_nodes(self):
+        pass
+
+
+# Elementary Devices:
 
 class R(Device):
     """A SPICE R (resistor or semiconductor resistor) device."""
 
-    def __init__(self, nplus, nminus, value,
+    def __init__(self, (nplus, nminus), value,
                  rmodel=None, l=None, w=None, temp=None, **kwargs):
 
         """General form:
@@ -44,11 +55,11 @@ class R(Device):
         self.temp = temp
 
     def map_nodes(self):
-        assert self.subcircuit is not None
-        nplus_index = self.subcircuit.get_node_index(self.nplus)
-        nminus_index = self.subcircuit.get_node_index(self.nminus)
+        assert self.subckt is not None
+        nplus_index = self.get_node_index(self.nplus)
+        nminus_index = self.get_node_index(self.nminus)
         self.nodes = {0: nplus_index,
-                          1: nminus_index}
+                      1: nminus_index}
 
     def setup(self, dt):
         """Define the resistor jacobian stamp.
@@ -167,7 +178,7 @@ class L(Device, CurrentSensor):
         self.jac[2, 2] = -self.value / dt
 
     def step(self, t, dt):
-        inductor_current = self.subcircuit.across_history[self.nodes[2]]
+        inductor_current = self.subckt.across_history[self.nodes[2]]
         self.bequiv[2] = self.value / dt * inductor_current
 
     def get_current_node(self):
@@ -207,24 +218,24 @@ class K(Device):
         self.mutual = None
 
     def setup(self, dt):
-        inductor1 = self.subcircuit.devices[self.l1name]
-        inductor2 = self.subcircuit.devices[self.l2name]
+        inductor1 = self.subckt.devices[self.l1name]
+        inductor2 = self.subckt.devices[self.l2name]
         self.node11, self.node12, self.internal1 = inductor1.nodes
         self.node21, self.node22, self.internal2 = inductor2.nodes
         self.nodes = [self.node11, self.node12, self.internal1, self.node21,
                       self.node22, self.internal2]
         self.node2port = {self.node11: 0, self.node12: 1, self.internal1: 2,
                           self.node21: 3, self.node22: 4, self.internal2: 5}
-        self.inductance1 = self.subcircuit.devices[self.l1name].value
-        self.inductance2 = self.subcircuit.devices[self.l2name].value
+        self.inductance1 = self.subckt.devices[self.l1name].value
+        self.inductance2 = self.subckt.devices[self.l2name].value
         self.mutual = self.value * math.sqrt(
             self.inductance1 * self.inductance2)
         self.jac[2, 5] = -self.mutual / dt
         self.jac[5, 2] = -self.mutual / dt
 
     def step(self, t, dt):
-        current1 = self.subcircuit.across_history[self.internal1]
-        current2 = self.subcircuit.across_history[self.internal2]
+        current1 = self.subckt.across_history[self.internal1]
+        current2 = self.subckt.across_history[self.internal2]
         self.bequiv[2] = self.mutual / dt * current2
         self.bequiv[5] = self.mutual / dt * current1
 
@@ -421,7 +432,7 @@ class W(Device):
 class V(Device, CurrentSensor):
     """A SPICE Voltage source or current sensor."""
 
-    def __init__(self, nplus, nminus, value, res=0.0, induct=0.0, **kwargs):
+    def __init__(self, (nplus, nminus), value, res=0.0, induct=0.0, **kwargs):
 
         """Create a new SPICE Diode device instance.
         General form:
@@ -484,13 +495,13 @@ class V(Device, CurrentSensor):
         self.induct = induct
 
     def map_nodes(self):
-        assert self.subcircuit is not None
-        nplus_index = self.subcircuit.get_node_index(self.nplus)
-        nminus_index = self.subcircuit.get_node_index(self.nminus)
-        internal_index = self.subcircuit.create_internal()
+        assert self.subckt is not None
+        nplus_index = self.get_node_index(self.nplus)
+        nminus_index = self.get_node_index(self.nminus)
+        internal_index = self.create_internal()
         self.nodes = {0: nplus_index,
-                          1: nminus_index,
-                          2: internal_index}
+                      1: nminus_index,
+                      2: internal_index}
 
     def setup(self, dt):
         self.jac[0, 2] = 1.0
@@ -641,7 +652,7 @@ class E(Device, CurrentSensor):
         elif isinstance(value, Table):
             self.table = value
 
-        self.subcircuit = None
+        self.subckt = None
         self.limit = limit
 
     def setup(self, dt):
@@ -857,8 +868,8 @@ class GenericTwoPort(Device):
         pass
 
     def minor_step(self, k, t, dt):
-        v = (self.subcircuit.across[self.nodes[1]] -
-             self.subcircuit.across[self.nodes[0]])
+        v = (self.subckt.across[self.nodes[1]] -
+             self.subckt.across[self.nodes[0]])
 
         g = self.get_g(v)
         i = self.get_i(v) - g * v

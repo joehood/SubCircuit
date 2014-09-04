@@ -21,7 +21,7 @@ plot('tran', Voltage(2), Voltage(3), Current('V1'))
 
 from simulator import *
 from devices import *
-from interfaces import *
+from netlist import *
 
 
 # ============================== CONSTANTS ======================================
@@ -81,7 +81,7 @@ def title(line1, line2=''):
     """
     global active_circuit
     if not active_circuit:
-        active_circuit = Circuit()
+        active_circuit = Netlist()
     active_circuit.title = line1
     active_circuit.title2 = line2
 
@@ -94,7 +94,7 @@ def device(name, cls, *args, **kwargs):
     global active_circuit
     device = cls(name, *args, **kwargs)
     if not active_circuit:
-        active_circuit = Circuit()
+        active_circuit = Netlist()
     active_circuit.add_device(device)
 
 
@@ -106,8 +106,8 @@ def model(name, cls, **kwargs):
     global active_circuit
     model = cls(name, **kwargs)
     if not active_circuit:
-        active_circuit = Circuit()
-    active_circuit.add_model(model)
+        active_circuit = Netlist()
+    active_circuit.model(model)
 
 
 def trans(tstep, tstop, start=None, stop=None, uic=False):
