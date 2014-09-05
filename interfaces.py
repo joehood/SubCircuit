@@ -13,6 +13,7 @@ class Device():
         :param kwargs: Additional keyword arguments stored in the params dict.
         :return: None
         """
+        self.nnodes = nnodes
         self.params = kwargs
         self.jac = numpy.zeros((nnodes, nnodes))
         self.bequiv = numpy.zeros((nnodes, 1))
@@ -126,6 +127,16 @@ class Device():
         """
         self.step(t, dt)
         pass
+
+    def clone(self):
+        """Produce a clone of this device instance.
+        :return: Cloned device instance
+        """
+        other = Device(self.nnodes, self.params)
+        other.nodes = self.nodes
+        other.subckt = self.subckt  # parent subcircuit
+        other.name = self.name
+        return other
 
 
 class Model():

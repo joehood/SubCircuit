@@ -353,8 +353,8 @@ netlist = Netlist('Subcircuit Test')
 
 # define a subcircuit definition:
 rlc = netlist.subckt('rlc', Subckt(1, 2, r1=10.0))
-rlc.device('R1', R([1, 3], value=10.0))
-rlc.device('R2', R([3, 2], value=20.0))
+rlc.device('RA', R([1, 3], value=10.0))
+rlc.device('RB', R([3, 2], value=20.0))
 
 # add devices and subcircuit instances to circuit:
 netlist.device('V1', V(['input', 'ground'], value=Sin(0.0, 10.0, 60.0)))

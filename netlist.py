@@ -54,7 +54,7 @@ class Netlist():
         self.subckt_instances = {}
         for name, device in self.devices.items():
             if isinstance(device, X):
-                self.subckt_instances[name] = device.subckt
+                self.subckt_instances[name] = device.subckt_def
                 del self.devices[name]
 
         # now add the devices from the subcircuits to the netlist, setting them

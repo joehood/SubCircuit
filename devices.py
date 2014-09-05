@@ -10,13 +10,30 @@ import pyspyce
 
 class X(Device):
     def __init__(self, nodes, subckt, **parameters):
+        """Creates a new subcircuit instance device:
+        :param nodes: External port nodal connections
+        :param subckt: Name of subckt def contained in the parent netlist
+        :param parameters: Dictionary of parameters to be used by the subckt
+        :return: New subcircuit instance device
+        """
         Device.__init__(self, 0, **parameters)
         self.nodes = nodes
         self.subckt = subckt
         self.parameters = parameters
 
+        # to be set by factory function in Netlist:
+        self.name = None
+        self.netlist = None
+
+        # to be defined in map_nodes:
+        self.devices = {}
+
     def map_nodes(self):
-        pass
+        subckt_def = self.netlist.subckts[self.subckt]
+        for device in subckt_def.devices:
+            self.device
+
+
 
 
 # Elementary Devices:
@@ -24,7 +41,7 @@ class X(Device):
 class R(Device):
     """A SPICE R (resistor or semiconductor resistor) device."""
 
-    def __init__(self, (nplus, nminus), value,
+    def __init__(self, nodes, value,
                  rmodel=None, l=None, w=None, temp=None, **kwargs):
 
         """General form:
@@ -46,8 +63,7 @@ class R(Device):
         Device.__init__(self, 2, **kwargs)
 
         # save arguments:
-        self.nplus = nplus
-        self.nminus = nminus
+        self.nplus, self.nminus = nodes
         self.value = value
         self.rmodel = rmodel
         self.l = l
@@ -178,7 +194,7 @@ class L(Device, CurrentSensor):
         self.jac[2, 2] = -self.value / dt
 
     def step(self, t, dt):
-        inductor_current = self.subckt.across_history[self.nodes[2]]
+        inductor_current = self.subckt_def.across_history[self.nodes[2]]
         self.bequiv[2] = self.value / dt * inductor_current
 
     def get_current_node(self):
@@ -218,24 +234,24 @@ class K(Device):
         self.mutual = None
 
     def setup(self, dt):
-        inductor1 = self.subckt.devices[self.l1name]
-        inductor2 = self.subckt.devices[self.l2name]
+        inductor1 = self.subckt_def.devices[self.l1name]
+        inductor2 = self.subckt_def.devices[self.l2name]
         self.node11, self.node12, self.internal1 = inductor1.nodes
         self.node21, self.node22, self.internal2 = inductor2.nodes
         self.nodes = [self.node11, self.node12, self.internal1, self.node21,
                       self.node22, self.internal2]
         self.node2port = {self.node11: 0, self.node12: 1, self.internal1: 2,
                           self.node21: 3, self.node22: 4, self.internal2: 5}
-        self.inductance1 = self.subckt.devices[self.l1name].value
-        self.inductance2 = self.subckt.devices[self.l2name].value
+        self.inductance1 = self.subckt_def.devices[self.l1name].value
+        self.inductance2 = self.subckt_def.devices[self.l2name].value
         self.mutual = self.value * math.sqrt(
             self.inductance1 * self.inductance2)
         self.jac[2, 5] = -self.mutual / dt
         self.jac[5, 2] = -self.mutual / dt
 
     def step(self, t, dt):
-        current1 = self.subckt.across_history[self.internal1]
-        current2 = self.subckt.across_history[self.internal2]
+        current1 = self.subckt_def.across_history[self.internal1]
+        current2 = self.subckt_def.across_history[self.internal2]
         self.bequiv[2] = self.mutual / dt * current2
         self.bequiv[5] = self.mutual / dt * current1
 
@@ -432,7 +448,7 @@ class W(Device):
 class V(Device, CurrentSensor):
     """A SPICE Voltage source or current sensor."""
 
-    def __init__(self, (nplus, nminus), value, res=0.0, induct=0.0, **kwargs):
+    def __init__(self, nodes, value, res=0.0, induct=0.0, **kwargs):
 
         """Create a new SPICE Diode device instance.
         General form:
@@ -480,8 +496,7 @@ class V(Device, CurrentSensor):
         """
         Device.__init__(self, 3, **kwargs)
 
-        self.nplus = nplus
-        self.nminus = nminus
+        self.nplus, self.nminus = nodes
 
         # determine type of value provided:
         if isinstance(value, Stimulus):
@@ -545,7 +560,6 @@ class I(Device):
 
     def __init__(self, name, node1, node2,
                  value, resistance=0.0, **kwargs):
-
         """TODO
         """
         Device.__init__(self, name, 2)
@@ -868,8 +882,8 @@ class GenericTwoPort(Device):
         pass
 
     def minor_step(self, k, t, dt):
-        v = (self.subckt.across[self.nodes[1]] -
-             self.subckt.across[self.nodes[0]])
+        v = (self.subckt_def.across[self.nodes[1]] -
+             self.subckt_def.across[self.nodes[0]])
 
         g = self.get_g(v)
         i = self.get_i(v) - g * v
