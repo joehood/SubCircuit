@@ -352,17 +352,15 @@ Vt ( ^ )(4)  .----|  (6)   |     [ ]
 netlist = Netlist('Subcircuit Test')
 
 # define a subcircuit definition:
-rlc = netlist.subckt('rlc', Subckt(1, 2, r1=10.0))
-rlc.device('RA', R([1, 3], value=10.0))
-rlc.device('RB', R([3, 2], value=20.0))
+rdiv = netlist.subckt('rdiv', Subckt([1, 2], r1=10.0))
+rdiv.device('RA', R([1, 3], value=10.0))
+rdiv.device('RB', R([3, 2], value=10.0))
 
 # add devices and subcircuit instances to circuit:
 netlist.device('V1', V(['input', 'ground'], value=Sin(0.0, 10.0, 60.0)))
-netlist.device('R1', R(['input', 'output'], value=10.0))
-netlist.device('R2', R(['output', 'ground'], value=10.0))
-netlist.device('X1', X(['output', 'ground'], subckt='rlc'))
+netlist.device('X1', X(['input', 'ground'], subckt='rdiv'))
 
 # run the transient simulation and plot some variables:
 netlist.trans(0.001, 0.1)
-netlist.plot(Voltage('input'), Voltage('output'), Current('V1'))
+netlist.plot(Voltage('input'), Voltage('X1_3'), Current('V1'))
 

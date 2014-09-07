@@ -1,6 +1,7 @@
 """Contains Circuit and SubCircuit class definitions."""
 
 from __future__ import print_function
+from copy import deepcopy as clone
 from interfaces import *
 from devices import *
 import simulator
@@ -17,16 +18,12 @@ class Netlist():
 
         # title:
         self.title = title
-
+        self.devices = {}
         self.models = {}
         self.subckts = {}  # subcircuit definitions
-        self.main_subckt = Subckt("main")  # main subcircuit definition
-        self.main_subckt.netlist = self  # add circuit reference to main subckt
-        self.subckt_instances = None
-        self.devices = None
 
         # node management:
-        self.nodes = {0: 0, 'ground': 0, 'gnd': 0}  # pre-load with ground node
+        self.nodes = {'ground': 0, 'gnd': 0, 0: 0}  # pre-load with ground node
         self.nodenum = 1
         self.internalnum = 0
 
@@ -43,38 +40,65 @@ class Netlist():
         self.dt = 0.0
 
     def flatten(self):
+
         """Flattens all the subcircuits recursively to the main subcircuit.
         :return: None
         """
-        # first, load top-level devices from the main subcircuit:
-        self.devices = self.main_subckt.devices
 
         # now loop through and grab all the subcircuit instances and remove from
         # device list:
-        self.subckt_instances = {}
-        for name, device in self.devices.items():
-            if isinstance(device, X):
-                self.subckt_instances[name] = device.subckt_def
-                del self.devices[name]
 
-        # now add the devices from the subcircuits to the netlist, setting them
-        # up with unique (mangled) device names and internal node names:
-        for subckt_name, subckt_instance in self.subckt_instances.items():
-            for device_name, device in subckt_instance.devices.items():
-                mangled_name = "{0}_{1}".format(subckt_name, device_name)
-                self.devices[mangled_name] = device
-                device.name = mangled_name
+        for x_name, x_device in self.devices.items():
 
+            if isinstance(x_device, X):  # if subckt instance device:
+
+                subckt_name = x_device.subckt
+
+                if subckt_name in self.subckts:  # if subckt def found:
+
+                    subckt = self.subckts[subckt_name]
+
+                    # loop through the subckt devices, clone them for the
+                    # subckt instance, and mangle the names to prevent
+                    # collisions:
+
+                    for sub_name, sub_device in subckt.devices.items():
+                        mangled_name = "{0}_{1}".format(x_name, sub_name)
+                        new_device = clone(sub_device)
+
+                        # replace subckt instance device node names with
+                        # external node names & mangle the internal node names:
+
+                        for i, node in enumerate(new_device.nodes):
+                            if node in x_device.port2node:
+                                new_device.nodes[i] = x_device.port2node[node]
+                            else:
+                                mangled_port = "{0}_{1}".format(x_name, node)
+                                new_device.nodes[i] = mangled_port
+
+                        # add device to top level:
+                        self.device(mangled_name, new_device)
+
+                    # delete the X device (which has now been replaced with
+                    # actual device instances and is no longer needed):
+
+                    del self.devices[x_name]
+
+                else:  # if subckt definition not found:
+
+                    msg = "Subcircuit {0} not defined for device {1}."
+                    msg.format(x_device.subckt, x_name)
+                    raise PySpyceError(msg)
 
     def stamp(self):
         """Stamps the main subcircuit devices.
         """
         self.jac[:, :] = 0.0
         self.bequiv[:] = 0.0
-        for device in self.main_subckt.devices.values():
-            for pi, ni in device.nodes.items():
+        for device in self.devices.values():
+            for pi, ni in device.port2node.items():
                 self.bequiv[ni] += device.bequiv[pi]
-                for pj, nj in device.nodes.items():
+                for pj, nj in device.port2node.items():
                     self.jac[ni, nj] += device.jac[pi, pj]
 
     def setup(self, dt):
@@ -90,7 +114,7 @@ class Netlist():
         self.bequiv = numpy.zeros(self.nodenum)
 
         # setup devices:
-        for device in self.main_subckt.devices.values():
+        for device in self.devices.values():
             device.setup(dt)
 
         # stamp the ciruit:
@@ -120,17 +144,33 @@ class Netlist():
         return success
 
     def print_matrices(self):
-        mstr = ""
-        for i in range(self.nodenum-1):
-            row = ""
-            for j in range(self.nodenum-1):
-                s = "{0:8.2g}  "
-                row += s.format(self.jac[i+1, j+1].astype(float))
-            s = "    |     {0:8.2g}"
-            row += s.format(self.across[i+1].astype(float))
-            s = "    |     {0:8.2g}"
-            mstr += row + s.format(self.bequiv[i+1].astype(float)) + '\n'
-        print(mstr)
+        s = "\nt = {0}\n".format(self.simulator.get_current_time())
+        print(s)
+        row = " " * 13
+        names = [0]
+        for i in range(1, self.nodenum):
+            node_name = ""
+            for name, index in self.nodes.items():
+                if index == i:
+                    names.append(name)
+                    node_name = name
+                    break
+            s = "{0:>12}  ".format(node_name)
+            row += s
+        print(row)
+        print(" " * 14 + "." + (len(row) - 9) * '-' + ".")
+
+        for i in range(1, self.nodenum):
+            row = "{0:>12}  |".format(names[i])
+            for j in range(1, self.nodenum):
+                s = "{0:12.2g}  "
+                row += s.format(self.jac[i, j].astype(float))
+            s = "    |     {0:12.2g}"
+            row += s.format(self.across[i].astype(float))
+            s = "    |     {0:12.2g}"
+            row += s.format(self.bequiv[i].astype(float))
+            print(row)
+        print(" " * 14 + "'" + (len(row) - 55) * '-' + "'")
 
     def minor_step(self, k, t, dt):
         """Called at each Newton iteration until convergance or itr > maxitr.
@@ -142,7 +182,7 @@ class Netlist():
         success = True
 
         # minor step all devices in this subcircuit:
-        for device in self.main_subckt.devices.values():
+        for device in self.devices.values():
             device.minor_step(k, t, dt)
 
         # re-stamp the subcircuit matrices with the updated information:
@@ -176,20 +216,27 @@ class Netlist():
             self.nodes[key] = self.nodenum - 1
         return self.nodes[key]
 
-    def create_internal(self):
+    def create_internal(self, device_name):
         self.nodenum += 1
         self.internalnum += 1
-        key = 'internal{0}'.format(self.internalnum - 1)
+        key = "{0}_int{1}".format(device_name, self.internalnum)
         self.nodes[key] = self.nodenum - 1
         return self.nodenum - 1
 
     def device(self, name, device):
-        """Add a device to the main subcircuit.
-        :param name: Name of device
-        :param device: Device instance
-        :return:
+        """Add a device to the netlist
+        :param name:
+        :param device:
+        :return: True if successful. False if failed.
         """
-        return self.main_subckt.device(name, device)
+        if not name in self.devices:
+            self.devices[name] = device
+            device.name = name
+            device.netlist = self
+            device.map_nodes()
+            return True
+        else:
+            return False
 
     def model(self, name, model):
         """Add a model (.model) definition to the Circuit.
@@ -229,43 +276,3 @@ class Netlist():
         :return: None
         """
         return self.simulator.plot(self, *variables, **kwargs)
-
-
-class Table():
-    """Generic lookup table for transfer functions of dependant sources."""
-
-    def __init__(self, *pairs):
-        """Creates a new table instance.
-        :param device: Parent device.
-        :param pairs: Sequences of length 2 mapping dependant source inputs to
-        outputs.
-        :return: None
-        """
-        self.xp = []
-        self.yp = []
-        for x, y in pairs:
-            self.xp.append(x)
-            self.yp.append(y)
-        self.cursor = 0  # this is to save the interp cursor state for speed
-
-    def output(self, _input):
-        """Gets the corresponding output value for the provided input.
-        :param _input: Input value
-        :return: Output mapped to provided input
-        """
-        return self._interp_(_input)
-
-    def _interp_(self, x):
-        if x <= self.xp[0]:
-            return self.yp[0]
-        elif x >= self.xp[-1]:
-            return self.yp[-1]
-        else:
-            i = self.cursor
-            while x > self.xp[i] and i < (len(self.xp) - 1):
-                i += 1
-            self.cursor = i
-            x0, y0 = self.xp[i - 1], self.yp[i - 1]
-            x1, y1 = self.xp[i], self.yp[i]
-            return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
-

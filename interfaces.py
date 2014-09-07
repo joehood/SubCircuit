@@ -1,6 +1,7 @@
 """interfaces.py"""
 
 import numpy
+import copy
 
 
 class Device():
@@ -17,9 +18,10 @@ class Device():
         self.params = kwargs
         self.jac = numpy.zeros((nnodes, nnodes))
         self.bequiv = numpy.zeros((nnodes, 1))
-        self.nodes = None
-        self.subckt = None  # parent subcircuit
+        self.port2node = None
+        self.netlist = None
         self.name = None
+        self.nodes = None
 
     def map_nodes(self):
         """Virtual class. Must be implemented by derived class.
@@ -31,28 +33,28 @@ class Device():
         """Provides convenient access to the current simulation time.
         :return: The current time in seconds
         """
-        return self.subckt.netlist.simulator.time
+        return self.netlist.simulator.time
 
     def get_timestep(self):
         """Provides convenient access to the current simulation timestep.
         :return: The current timestep in seconds
         """
-        return self.subckt.netlist.simulator.dt
+        return self.netlist.simulator.dt
 
     def get_model(self, mname):
         """Provides convenient access to all models in the subcircuit
         :return: The model with key==mname, if it exists in the subcircuit.
         """
-        if mname in self.subckt.netlist.models:
-            return self.subckt.netlist.models[mname]
+        if mname in self.netlist.models:
+            return self.netlist.models[mname]
         else:
             return None
 
     def get_node_index(self, name):
-        return self.subckt.netlist.get_node_index(name)
+        return self.netlist.get_node_index(name)
 
-    def create_internal(self):
-        return self.subckt.netlist.create_internal()
+    def create_internal(self, name):
+        return self.netlist.create_internal(name)
 
     def get_across_history(self, port1=None, port2=None, device=None):
         """Gets the across value at the given ports for t-h (last timestep).
@@ -67,14 +69,14 @@ class Device():
         """
         across = float('inf')
         if device:
-            nodes = self.subckt.devices[device].nodes
+            nodes = self.netlist.devices[device].nodes
             if len(nodes) > 1:
-                across = self.subckt.across_history[0]
-                across -= self.subckt.across_history[1]
+                across = self.netlist.across_history[0]
+                across -= self.netlist.across_history[1]
         else:
-            across = self.subckt.netlist.across_history[self.nodes[port1]]
+            across = self.netlist.across_history[self.port2node[port1]]
             if port2:
-                across -= self.subckt.netlist.across_history[self.nodes[port2]]
+                across -= self.netlist.across_history[self.port2node[port2]]
         return across
 
     def get_across(self, port1=None, port2=None, external_device=None):
@@ -89,18 +91,18 @@ class Device():
         subcircuit
         :return: Voltage in Volts
         """
-        if self.subckt.netlist.across_last is not None:
+        if self.netlist.across_last is not None:
             across = float('inf')
             if external_device:
-                nodes = self.subckt.devices[external_device].nodes
+                nodes = self.netlist.devices[external_device].nodes
                 assert len(nodes) > 1
-                across = self.subckt.netlist.across_last[nodes[0]]
-                across -= self.subckt.netlist.across_last[nodes[1]]
+                across = self.netlist.across_last[nodes[0]]
+                across -= self.netlist.across_last[nodes[1]]
             else:
                 a = 5
-                across = self.subckt.netlist.across_last[self.nodes[port1]]
+                across = self.netlist.across_last[self.port2node[port1]]
                 if port2:
-                    across -= self.subckt.netlist.across_last[self.nodes[port2]]
+                    across -= self.netlist.across_last[self.port2node[port2]]
             return across
         else:
             # TODO: what is return value when across vector not initialized?
@@ -156,19 +158,20 @@ class Model():
 class Subckt():
     """A SPICE subcircuit definition (.subckt)"""
 
-    def __init__(self, name, *ports, **parameters):
+    def __init__(self, ports, **parameters):
         """Creates a new subcircuit definition.
         :param name: Name of subcircuit. Must be unique within parent subckt
         :param ports: External ports in the same order as subcircuit instances
         :param parameters: Subcircuit parameters.
         :return: A new subcircuit.
         """
-        self.name = name
         self.ports = ports
         self.parameters = parameters
         self.netlist = None
         self.devices = {}
         self.nnodes = 0
+        self.parent = None
+        self.name = None
 
     def map_nodes(self):
         # TODO: fix
@@ -184,7 +187,6 @@ class Subckt():
             self.devices[name] = device
             device.name = name
             device.subckt = self
-            device.map_nodes()
             return True
         else:
             return False
@@ -222,3 +224,50 @@ class Stimulus():
     def step(self, t, dt):
         """Virtual method. Must be implemented by derived class."""
         raise NotImplementedError
+
+
+class Table():
+    """Generic lookup table for transfer functions of dependant sources."""
+
+    def __init__(self, *pairs):
+        """Creates a new table instance.
+        :param device: Parent device.
+        :param pairs: Sequences of length 2 mapping dependant source inputs to
+        outputs.
+        :return: None
+        """
+        self.xp = []
+        self.yp = []
+        for x, y in pairs:
+            self.xp.append(x)
+            self.yp.append(y)
+        self.cursor = 0  # this is to save the interp cursor state for speed
+
+    def output(self, _input):
+        """Gets the corresponding output value for the provided input.
+        :param _input: Input value
+        :return: Output mapped to provided input
+        """
+        return self._interp_(_input)
+
+    def _interp_(self, x):
+        if x <= self.xp[0]:
+            return self.yp[0]
+        elif x >= self.xp[-1]:
+            return self.yp[-1]
+        else:
+            i = self.cursor
+            while x > self.xp[i] and i < (len(self.xp) - 1):
+                i += 1
+            self.cursor = i
+            x0, y0 = self.xp[i - 1], self.yp[i - 1]
+            x1, y1 = self.xp[i], self.yp[i]
+            return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
+
+
+class PySpyceError(Exception):
+    def __init__(self, msg):
+        """Creates a new PySpyceError
+        :param msg: Error message
+        """
+        Exception.__init__(self, "PySpyce Error: {0}".format(msg))

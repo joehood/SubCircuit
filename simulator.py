@@ -141,13 +141,13 @@ class Simulator():
 
         # step through time evolution of the network and save off across data
         # for each timestep:
-        t = 0.0
+        self.t = 0.0
         for i in range(n):
-            success = self.circuit.step(t, tstep)
+            success = self.circuit.step(self.t, tstep)
             if not success:
                 print("Error solving circuit. Simulation not completed.")
                 break
-            t += tstep
+            self.t += tstep
             self.trans_time[i] = (i * tstep)
             self.trans_data[:, i] = numpy.copy(self.circuit.across)
 
@@ -232,6 +232,12 @@ class Simulator():
 
     def four(self):
         raise NotImplementedError()
+
+    def get_current_time(self):
+        """Get the current simulation time in seconds
+        :return: The current simualtion time in seconds
+        """
+        return self.t
 
 
 if __name__ == '__main__':
