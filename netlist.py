@@ -5,8 +5,9 @@ from copy import deepcopy as clone
 from interfaces import *
 from devices import *
 import simulator
-import numpy
+import numpy as np
 import numpy.linalg as la
+from scipy.sparse import csc_matrix as smatrix, linalg as sla
 
 
 class Netlist():
@@ -32,6 +33,7 @@ class Netlist():
         self.across_last = None  # across at last iteration
         self.across_history = None  # across at end of last time step
         self.jac = None
+        self.sjac = None  # sparce jacobian for fast factorization
         self.bequiv = None
 
         # simulator:
@@ -70,7 +72,9 @@ class Netlist():
                         # external node names & mangle the internal node names:
 
                         for i, node in enumerate(new_device.nodes):
-                            if node in x_device.port2node:
+                            if node == 0 or node == 'ground' or node == 'gnd':
+                                new_device.nodes[i] = 0
+                            elif node in x_device.port2node:
                                 new_device.nodes[i] = x_device.port2node[node]
                             else:
                                 mangled_port = "{0}_{1}".format(x_name, node)
@@ -90,6 +94,27 @@ class Netlist():
                     msg.format(x_device.subckt, x_name)
                     raise PySpyceError(msg)
 
+    def setup(self, dt):
+        """Calls setup() on all of this subcircuit devices.
+        Setup is called at the beginning of the simulation and allows the
+        intial stamps to be applied.
+        """
+        # dimension matrices:
+        n = self.nodenum
+        self.across = np.zeros(n)
+        self.across_last = np.zeros(n)
+        self.across_history = np.zeros(n)
+        self.jac = np.zeros((n, n))
+        self.bequiv = np.zeros(n)
+        self.sjac = smatrix((n-1, n-1))
+
+        # setup devices:
+        for device in self.devices.values():
+            device.start(dt)
+
+        # stamp the ciruit:
+        self.stamp()
+
     def stamp(self):
         """Stamps the main subcircuit devices.
         """
@@ -100,27 +125,9 @@ class Netlist():
                 self.bequiv[ni] += device.bequiv[pi]
                 for pj, nj in device.port2node.items():
                     self.jac[ni, nj] += device.jac[pi, pj]
+        #self.sjac = smatrix(self.jac[1:, 1:])
 
-    def setup(self, dt):
-        """Calls setup() on all of this subcircuit devices.
-        Setup is called at the beginning of the simulation and allows the
-        intial stamps to be applied.
-        """
-        # dimension matrices:
-        self.across = numpy.zeros(self.nodenum)
-        self.across_last = numpy.zeros(self.nodenum)
-        self.across_history = numpy.zeros(self.nodenum)
-        self.jac = numpy.zeros((self.nodenum, self.nodenum))
-        self.bequiv = numpy.zeros(self.nodenum)
-
-        # setup devices:
-        for device in self.devices.values():
-            device.setup(dt)
-
-        # stamp the ciruit:
-        self.stamp()
-
-    def step(self, t, dt):
+    def step(self, dt, t):
         """Steps the circuit to the next timestep.
         :param t: the current time.
         :param dt: the current timestep
@@ -131,17 +138,17 @@ class Netlist():
         k = 0
         self.converged = False
         while k < self.simulator.maxitr and not self.converged:
-            success = self.minor_step(k, t, dt)
+            success = self.minor_step(dt, t, k)
             if not success:
                 break
             k += 1
 
-        self.across_last = numpy.copy(self.across)  # update netwon state at k=0
-        self.across_history = numpy.copy(self.across)  # save off across history
+        self.across_last = np.copy(self.across) # update netwon state at k=0
+        self.across_history = np.copy(self.across)  # save off across history
 
-        self.print_matrices()
+        # self.print_matrices()
 
-        return success
+        return success, k
 
     def print_matrices(self):
         s = "\nt = {0}\n".format(self.simulator.get_current_time())
@@ -172,7 +179,7 @@ class Netlist():
             print(row)
         print(" " * 14 + "'" + (len(row) - 55) * '-' + "'")
 
-    def minor_step(self, k, t, dt):
+    def minor_step(self, dt, t, k):
         """Called at each Newton iteration until convergance or itr > maxitr.
         :param k: Current newton iteration index
         :param t: Current simulation time
@@ -183,7 +190,7 @@ class Netlist():
 
         # minor step all devices in this subcircuit:
         for device in self.devices.values():
-            device.minor_step(k, t, dt)
+            device.minor_step(dt, t, k)
 
         # re-stamp the subcircuit matrices with the updated information:
         self.stamp()
@@ -191,7 +198,10 @@ class Netlist():
         # solve across vector from linear system:
         # jacobian * across = b-equivalent (Ax = B):
         try:
+            #lu = sla.splu(self.sjac)
+            #self.across[1:] = lu.solve(self.bequiv[1:])
             self.across[1:] = la.solve(self.jac[1:, 1:], self.bequiv[1:])
+
         except la.LinAlgError as laerr:
             print("Linear algebra error occured while attempting to solve "
                   "circuit. Circuit not solved. Error details: ", laerr.message)
@@ -206,7 +216,7 @@ class Netlist():
                     break
 
         # save off across vector state for this iteration:
-        self.across_last = numpy.copy(self.across)
+        self.across_last = np.copy(self.across)
 
         return success
 
@@ -216,11 +226,15 @@ class Netlist():
             self.nodes[key] = self.nodenum - 1
         return self.nodes[key]
 
-    def create_internal(self, device_name):
+    def create_internal(self, name):
         self.nodenum += 1
         self.internalnum += 1
-        key = "{0}_int{1}".format(device_name, self.internalnum)
-        self.nodes[key] = self.nodenum - 1
+        if not name in self.nodes:
+            self.nodes[name] = self.nodenum - 1
+        else:
+            s = "Internal node name {0} is not unique."
+            s.format(name)
+            raise PySpyceError(s)
         return self.nodenum - 1
 
     def device(self, name, device):
@@ -233,7 +247,7 @@ class Netlist():
             self.devices[name] = device
             device.name = name
             device.netlist = self
-            device.map_nodes()
+            device.connect()
             return True
         else:
             return False
@@ -276,3 +290,6 @@ class Netlist():
         :return: None
         """
         return self.simulator.plot(self, *variables, **kwargs)
+
+    def simulation_hook(self, dt, t):
+        pass

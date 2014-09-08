@@ -7,33 +7,40 @@ import copy
 class Device():
     """A Device (circuit element) base object."""
 
-    def __init__(self, nnodes, **kwargs):
+    def __init__(self, nodes, internals, **parameters):
         """Creates a device base.
         :param name: Mandatory name, unique within the parent subcircuit.
         :param nnodes: number of nodes for this device (including internal)
         :param kwargs: Additional keyword arguments stored in the params dict.
         :return: None
         """
-        self.nnodes = nnodes
-        self.params = kwargs
-        self.jac = numpy.zeros((nnodes, nnodes))
-        self.bequiv = numpy.zeros((nnodes, 1))
+        self.nodes = list(nodes)
+        self.nnodes = len(nodes) + internals
+        self.jac = numpy.zeros((self.nnodes, self.nnodes))
+        self.bequiv = numpy.zeros((self.nnodes, 1))
         self.port2node = None
         self.netlist = None
         self.name = None
-        self.nodes = None
+        self.parameters = parameters
 
-    def map_nodes(self):
+    def connect(self):
         """Virtual class. Must be implemented by derived class.
         :return: None.
         """
         raise NotImplementedError()
 
+    def update(self):
+        """
+        TODO: doc
+        :return:
+        """
+        pass
+
     def get_time(self):
         """Provides convenient access to the current simulation time.
         :return: The current time in seconds
         """
-        return self.netlist.simulator.time
+        return self.netlist.simulator.t
 
     def get_timestep(self):
         """Provides convenient access to the current simulation timestep.
@@ -108,7 +115,7 @@ class Device():
             # TODO: what is return value when across vector not initialized?
             return 0.0
 
-    def setup(self, dt):
+    def start(self, dt):
         """Virtual method. Must be implemented by derived class.
         Called at the beginning of the simulation before the parent subcircuit's
         setup method is called and before the subcircuit's stamp is created.
@@ -116,29 +123,26 @@ class Device():
         """
         pass
 
-    def step(self, t, dt):
+    def step(self, dt, t):
         """Virtual method. Must be implemented by derived class.
         Called as each simulation timestep.
         """
         pass
 
-    def minor_step(self, k, t, dt):
+    def minor_step(self, dt, t, k):
         """Virtual method. May be implemented by derived class.
         Called before each Newton interation. If device does not implement
         minor_step, self.step() will be called instead.
         """
-        self.step(t, dt)
+        self.step(dt, t)
         pass
 
-    def clone(self):
-        """Produce a clone of this device instance.
-        :return: Cloned device instance
-        """
-        other = Device(self.nnodes, self.params)
-        other.nodes = self.nodes
-        other.subckt = self.subckt  # parent subcircuit
-        other.name = self.name
-        return other
+    def __str__(self):
+        s = "{0} {1}".format(self.name, self.nodes)
+        return s
+
+    def __repr__(self):
+        return str(self)
 
 
 class Model():
@@ -172,10 +176,6 @@ class Subckt():
         self.nnodes = 0
         self.parent = None
         self.name = None
-
-    def map_nodes(self):
-        # TODO: fix
-        self.nnodes = 2  # TODO: determine how many nodes here.
 
     def device(self, name, device):
         """Add a device to the subcircuit
@@ -217,11 +217,11 @@ class Stimulus():
     def __init__(self):
         self.device = None
 
-    def setup(self, dt):
+    def start(self, dt):
         """Virtual method. Must be implemented by derived class."""
         raise NotImplementedError
 
-    def step(self, t, dt):
+    def step(self, dt, t):
         """Virtual method. Must be implemented by derived class."""
         raise NotImplementedError
 
@@ -243,12 +243,12 @@ class Table():
             self.yp.append(y)
         self.cursor = 0  # this is to save the interp cursor state for speed
 
-    def output(self, _input):
+    def output(self, input_):
         """Gets the corresponding output value for the provided input.
-        :param _input: Input value
+        :param input_: Input value
         :return: Output mapped to provided input
         """
-        return self._interp_(_input)
+        return self._interp_(input_)
 
     def _interp_(self, x):
         if x <= self.xp[0]:

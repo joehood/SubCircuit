@@ -1,9 +1,10 @@
 """Contains the functions for analysis and simulation for a SPICE network."""
 
-from __future__ import print_function
+from __future__ import print_function, division
 
 import matplotlib.pyplot as plt
 from netlist import *
+from time import time, clock
 
 try:
     import wx
@@ -55,14 +56,14 @@ class Simulator():
     Provides the functions for SPICE simulation and analysis.
     """
 
-    def __init__(self, circuit, maxitr=100, tol=0.001):
+    def __init__(self, netlist, maxitr=100, tol=0.001):
         """
         Creates a new Simulator instance for the provided circuit.
         Arguments:
         :param circuit: The circuit to simulate.
         """
-        self.circuit = circuit
-        self.circuit.simulator = self
+        self.netlist = netlist
+        self.netlist.simulator = self
         self.t = 0.0
         self.maxitr = maxitr
         self.tol = tol
@@ -133,23 +134,42 @@ class Simulator():
 
         # determine the time-series array length and setup the circuit:
         n = int(tstop / tstep) + 1
-        self.circuit.setup(tstep)
+        self.netlist.setup(tstep)
 
         # allocate the arrays and save to variables for plot():
-        self.trans_data = numpy.zeros((self.circuit.nodenum, n))
+        self.trans_data = numpy.zeros((self.netlist.nodenum, n))
         self.trans_time = numpy.zeros(n)  # array for time values
 
         # step through time evolution of the network and save off across data
         # for each timestep:
         self.t = 0.0
+        p1 = 0.0
+        p0 = p1
+        step = 0.05
+
+        itr = []
+
         for i in range(n):
-            success = self.circuit.step(self.t, tstep)
+
+            self.netlist.simulation_hook(tstep, self.t)
+            for device in self.netlist.devices.values():
+                device.update()
+
+            success, k = self.netlist.step(tstep, self.t)
+            itr.append(k)
             if not success:
                 print("Error solving circuit. Simulation not completed.")
                 break
             self.t += tstep
             self.trans_time[i] = (i * tstep)
-            self.trans_data[:, i] = numpy.copy(self.circuit.across)
+            self.trans_data[:, i] = numpy.copy(self.netlist.across)
+            p1 = i / n
+            if p1 - p0 >= step:
+                p0 = p1
+                s = "time:{0:8.4g}s percent:{1:3.0f} min itr: {2}  max itr: {3}"
+                s = s.format(self.t, p1*100, min(itr), max(itr))
+                itr = []
+                print(s)
 
     def save(self):
         raise NotImplementedError()
@@ -194,8 +214,8 @@ class Simulator():
             trace = None
             label = ''
             if isinstance(variable, Voltage):
-                node1_index = self.circuit.nodes[variable.node1]
-                node2_index = self.circuit.nodes[variable.node2]
+                node1_index = self.netlist.nodes[variable.node1]
+                node2_index = self.netlist.nodes[variable.node2]
                 trace = (self.trans_data[node1_index, :] -
                          self.trans_data[node2_index, :])
                 if variable.node2 == 0:
@@ -204,7 +224,7 @@ class Simulator():
                     s = 'V({0}, {1})'
                     label = s.format(variable.node1, variable.node2)
             elif isinstance(variable, Current):
-                device = self.circuit.devices[variable.vsource]
+                device = self.netlist.devices[variable.vsource]
                 if isinstance(device, CurrentSensor):
                     node, scale = device.get_current_node()
                     trace = self.trans_data[node, :] * scale
@@ -223,7 +243,7 @@ class Simulator():
             for curve in curves:
                 x, y, label = curve
                 plt.plot(x, y, label=label)
-                plt.title(self.circuit.title)
+                plt.title(self.netlist.title)
                 plt.legend()
                 plt.xlabel('t (s)')
             plt.show()

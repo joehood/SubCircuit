@@ -2,19 +2,17 @@
 
 from pyspyce import *
 import math
+import time
 
 
-# def example1():
-# circuit = ps.Circuit()
-# circuit.title = 'Series RLC'
-# circuit.add_device(ps.V, 1, 0, 4, ps.Sin(0.0, 1.0, 100.0))
-# circuit.add_device('R1', ps.R, 1, 2, 1.0)
-# circuit.add_device('L1', ps.L, 2, 3, 5, 0.01, ic=0.0)
-# circuit.add_device('C1', ps.C, 3, 0, 0.001, ic=0.0)
-#
-# simulator = ps.Simulator(circuit)
-#   simulator.trans(0.0005, 0.05)
-#   simulator.plot('tran', ps.Voltage(2), ps.Voltage(3), ps.Current('V1'))
+# netlist = Netlist("Series RLC")
+# netlist.device('V1', V((1, 0), Sin(0.0, 1.0, 100.0)))
+# netlist.device('R1', R((1, 2), 1.0))
+# netlist.device('L1', L((2, 3), 0.001, ic=0.0))
+# netlist.device('C1', C((3, 0), 0.001, ic=0.0))
+# netlist.trans(0.0001, 0.05)
+# netlist.plot('tran', Voltage(2), Voltage(3), Current('V1'))
+
 #
 # def example2():
 #   circuit = ps.Circuit()
@@ -31,43 +29,44 @@ import math
 #   circuit.plot('tran', ps.Voltage(1), ps.Voltage(3))
 #
 
-# circuit = ps.Circuit()
-# circuit.title = 'Full-wave Rectifier'
-# circuit.add_device(ps.V('V1', 2, 3, 6, ps.Sin(0.0, 10.0, 100.0)))
-# circuit.add_device(ps.D('D1', 2, 1, 'Diode1'))
-# circuit.add_device(ps.D('D2', 3, 1, 'Diode1'))
-# circuit.add_device(ps.D('D3', 4, 2, 'Diode1'))
-# circuit.add_device(ps.D('D4', 4, 3, 'Diode1'))
-# circuit.add_device(ps.R('R1', 5, 4, 10.0))
-# circuit.add_device(ps.R('R2', 4, 0, 1000.0))
-# circuit.add_device(ps.C('C1', 5, 4, 0.002))
-# circuit.add_device(ps.L('L1', 1, 5, 7, 0.0001))
-# circuit.add_model(ps.DMod('Diode1', IS=1.0e-2))
-# simulator = ps.Simulator(circuit)
-# simulator.trans(0.0001, 0.04)
-# simulator.plot('tran', ps.Voltage(2, 3), ps.Voltage(5, 4), ps.Current('V1'))
-#
-#
-# circuit = ps.Circuit()
-# circuit.title = 'Mutual Inductance Test'
-#
-# circuit.add_device(ps.V('V1', 1, 0, 5, ps.Sin(0.0, 10.0, 100.0)))
-# circuit.add_device(ps.R('R1', 1, 2, 0.01))
-# circuit.add_device(ps.L('L1', 2, 0, 6, 0.001))
-# circuit.add_device(ps.L('L2', 3, 0, 7, 0.002))
-# circuit.add_device(ps.K('K1', 'L1', 'L2', 0.999))
-# circuit.add_device(ps.R('R2', 3, 4, 10.0))
-# circuit.add_device(ps.V('VS',  0, 4, 8, 0.0))
-#
-# simulator = ps.Simulator(circuit)
-#
-# simulator.trans(0.0001, 0.05)
-#
-# simulator.plot('tran',
-#                ps.Voltage(1),
-#                ps.Voltage(3),
-#                ps.Current('V1'),
-#                ps.Current('VS'))
+# netlist = Netlist("Full-wave Rectifier")
+# netlist.device('V1', V((2, 3), Sin(0.0, 10.0, 100.0)))
+# netlist.device('D1', D((2, 1)))
+# netlist.device('D2', D((3, 1)))
+# netlist.device('D3', D((4, 2)))
+# netlist.device('D4', D((4, 3)))
+# netlist.device('R1', R((5, 4), 10.0))
+# netlist.device('R2', R((4, 0), 1000.0))
+# netlist.device('C1', C((5, 4), 0.002))
+# netlist.device('L1', L((1, 5), 0.00001))
+# netlist.trans(0.0001, 0.02)
+# netlist.plot(Voltage(2, 3), Voltage(5, 4), Current('V1'))
+
+
+"""
+Example transformer
+VIN 1 0 SIN(0 170 60 0 0)
+L1 1 0 2000
+L2 2 0 200
+K L1 L2 0.99999
+RL 2 0 500
+.TRAN 0.2M 25M
+.PLOT TRAN V(1)
+.PLOT TRAN V(2)
+.END
+"""
+
+# netlist = Netlist("Example transformer")
+# netlist.device('V1N', V((1, 0), Sin(0, 170, 60, 0, 0), res=0.1))
+# netlist.device('L1', L((1, 0), 2000))
+# netlist.device('L2', L((2, 0), 200))
+# netlist.device('K', K('L1', 'L2', 0.99999))
+# netlist.device('RL', R((2, 0), 500.0))
+# netlist.trans(0.00002, 0.025)
+# netlist.plot(Voltage(1), Voltage(2))
+
+
+
 #
 # circuit = ps.Circuit()
 # circuit.title = 'Diode Test'
@@ -174,7 +173,7 @@ Three-phase Rectifier:
     |       |       .-------------------o 3        '-'      |
    +|      +|      +|     |      |      |           |       |
    ,'.     ,'.     ,'.    |      |      |           |       |
-Va(   ) Vb(   ) Vc(   )   |      |      |           o-------'
+Va( ~ ) Vb( ~ ) Vc( ~ )   |      |      |           o-------'
    `.'     `.'     `.'   _|_    _|_    _|_          |
     |       |       |    /_\ D2 /_\ D4 /_\ D6       |
     '-------+-------'     |      |      |           |
@@ -183,50 +182,44 @@ Va(   ) Vb(   ) Vc(   )   |      |      |           o-------'
 
 """
 
-# a = 2.0 / 3.0 * math.pi
-#
-# cir = ps.Circuit()
-#
-# cir.title = "Three-phase Rectifier"
-#
-# Va = ps.V('Va', 1, 0, 7,
-#           ps.Sin(va=80.0, freq=60.0, phi=0.0), resistance=0.01, inductance=1e-4)
-#
-# Vb = ps.V('Vb', 2, 0, 8,
-#           ps.Sin(va=80.0, freq=60.0, phi=a), resistance=0.01, inductance=1e-4)
-#
-# Vc = ps.V('Vc', 3, 0, 9,
-#           ps.Sin(va=80.0, freq=60.0, phi=-a), resistance=0.01, inductance=1e-4)
-#
-# D1 = ps.D('D1', 1, 4)
-# D3 = ps.D('D3', 2, 4)
-# D5 = ps.D('D5', 3, 4)
-# D2 = ps.D('D2', 5, 1)
-# D4 = ps.D('D4', 5, 2)
-# D6 = ps.D('D6', 5, 3)
-#
-# RL = ps.R('RL', 6, 5, 100.0)
-# Cf = ps.C('Cf', 6, 5, 0.001)
-# Lf = ps.L('Lf', 4, 6, 10, 0.0001)
-#
-# V2 = ps.V('V2', 13, 0, 14, ps.Pulse(-1.0, 1.0, 0.05, pw=1.0))
-# S2 = ps.S('S2', (6, 11, 12), vsource='V2')
-# R2 = ps.R('R2', 11, 5, 10.0)
-#
-# cir.add_devices(Va, Vb, Vc, D1, D2, D3, D4, D5, D6, RL, Cf, Lf, V2, S2, R2)
-#
-# sim = ps.Simulator(cir)
-# sim.trans(0.0001, 0.1)
-#
-# sim.plot('tran',
-#          ps.Voltage(1),
-#          ps.Voltage(2),
-#          ps.Voltage(3),
-#          ps.Current('Va'),
-#          ps.Current('Vb'),
-#          ps.Current('Vc'),
-#          ps.Voltage(6, 5),
-#          ps.Current('S2'))
+netlist = Netlist("Three-phase Rectifier")
+
+a = 2.0 / 3.0 * math.pi
+
+netlist.device("Va", V((1, 0), Sin(va=80.0, freq=60.0, phi=0), res=0, induct=0))
+netlist.device("Vb", V((2, 0), Sin(va=80.0, freq=60.0, phi=a), res=0, induct=0))
+netlist.device("Vc", V((3, 0), Sin(va=80.0, freq=60.0, phi=-a), res=0, induct=0))
+netlist.device("D1", D((1, 4)))
+netlist.device("D3", D((2, 4)))
+netlist.device("D5", D((3, 4)))
+netlist.device("D2", D((5, 1)))
+netlist.device("D4", D((5, 2)))
+netlist.device("D6", D((5, 3)))
+netlist.device("RL", R((6, 5), 10.0))
+netlist.device("Cf", C((6, 5), 0.0001))
+netlist.device("Lf", L((4, 6), 0.0001))
+
+netlist.simulator.tol = 0.1
+
+
+def load_step(dt, t):
+    if 0.02 < t < 0.04:
+        netlist.devices['RL'].value = 2.0
+    elif t > 0.04:
+        netlist.devices['RL'].value = 1.0
+
+netlist.simulation_hook = load_step
+
+netlist.trans(0.0001, 0.05)
+netlist.plot(Voltage(1),
+             Voltage(2),
+             Voltage(3),
+             Current('Va'),
+             Current('Vb'),
+             Current('Vc'),
+             Current('Lf'),
+             Voltage(4, 5))
+
 
 """
 Three-phase Inverter
@@ -348,19 +341,48 @@ Vt ( ^ )(4)  .----|  (6)   |     [ ]
 #          ps.Voltage(6))
 
 
-# create netlist and add a title:
-netlist = Netlist('Subcircuit Test')
+# # create netlist and add a title:
+# netlist = Netlist('Subcircuit Test')
+#
+# # define a subcircuit definition:
+# rdiv = netlist.subckt('rdiv', Subckt([1, 2], r1=10.0, r2=20.0))
+# rdiv.device('L', L([1, 3], value=0.01))
+# rdiv.device('R', R([3, 2], value=10.0))
+# rdiv.device('C', C([1, 2], value=0.0001))
+#
+# # add devices and subcircuit instances to circuit:
+# netlist.device('V1', V(['input', 'ground'], value=Sin(0.0, 10.0, 60.0)))
+# netlist.device('X1', X(['input', 'ground'], subckt='rdiv'))
+#
+# # run the transient simulation and plot some variables:
+# netlist.trans(0.0001, 0.1)
+#
+# netlist.plot(Voltage('input'),
+#              Voltage('X1_3'),
+#              Current('V1'),
+#              Current('X1_L'))
 
-# define a subcircuit definition:
-rdiv = netlist.subckt('rdiv', Subckt([1, 2], r1=10.0))
-rdiv.device('RA', R([1, 3], value=10.0))
-rdiv.device('RB', R([3, 2], value=10.0))
 
-# add devices and subcircuit instances to circuit:
-netlist.device('V1', V(['input', 'ground'], value=Sin(0.0, 10.0, 60.0)))
-netlist.device('X1', X(['input', 'ground'], subckt='rdiv'))
-
-# run the transient simulation and plot some variables:
-netlist.trans(0.001, 0.1)
-netlist.plot(Voltage('input'), Voltage('X1_3'), Current('V1'))
-
+# netlist = Netlist("Distributed Tline")
+#
+# section = netlist.subckt('section', Subckt((1, 2)))
+# section.device('L', L((1, 2), 0.001))
+# section.device('C', C((2, 0), 0.0001))
+#
+# netlist.device('V1', V((1, 0), Sin(0.0, 100.0, 60.0)))
+# netlist.device('X1', X((1, 2), subckt='section'))
+# netlist.device('X2', X((2, 3), subckt='section'))
+# netlist.device('X3', X((3, 4), subckt='section'))
+# netlist.device('X4', X((4, 5), subckt='section'))
+# netlist.device('R1', R((5, 0), 5.0))
+#
+# netlist.trans(0.0001, 0.1)
+#
+# netlist.plot(Voltage(1),
+#              Voltage(2),
+#              Voltage(3),
+#              Voltage(4),
+#              Current('X1_L'),
+#              Current('X2_L'),
+#              Current('X3_L'),
+#              Current('X4_L'))

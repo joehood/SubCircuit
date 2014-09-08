@@ -18,22 +18,17 @@ class X(Device):
         :param parameters: Dictionary of parameters for the subcircuit instance
         :return: New subckt instance device
         """
-        Device.__init__(self, 0, **parameters)
+        Device.__init__(self, nodes, 0, **parameters)
         self.subckt = subckt
         self.parameters = parameters
-        self.nodes = nodes
 
-    def map_nodes(self):
+    def connect(self):
         """Maps the ports to the system node indexes.
         :return: None
         """
-        assert self.netlist is not None
-        subdef = self.netlist.subckts[self.subckt]
-        assert len(self.nodes) == len(subdef.ports)
         self.port2node = {}
-        for port, node in zip(subdef.ports, self.nodes):
-            self.port2node[port] = node
-        a = 5
+        for p, n in zip(self.netlist.subckts[self.subckt].ports, self.nodes):
+            self.port2node[p] = n
 
 
 # Elementary Devices:
@@ -42,7 +37,7 @@ class R(Device):
     """A SPICE R (resistor or semiconductor resistor) device."""
 
     def __init__(self, nodes, value,
-                 rmodel=None, l=None, w=None, temp=None, **kwargs):
+                 rmodel=None, l=None, w=None, temp=None, **parameters):
 
         """General form:
         RXXXXXXX N1 N2 VALUE
@@ -60,28 +55,19 @@ class R(Device):
         RLOAD 2 10 10K
         RMOD 3 7 RMODEL L=10u W=1u
         """
-        Device.__init__(self, 2, **kwargs)
-
-        # save arguments:
-        assert len(nodes) == 2
-        self.nodes = nodes
+        Device.__init__(self, nodes, 0, **parameters)
         self.value = value
         self.rmodel = rmodel
         self.l = l
         self.w = w
         self.temp = temp
 
-    def map_nodes(self):
-        assert self.netlist is not None
+    def connect(self):
         nplus, nminus = self.nodes
-        nplus_index = self.get_node_index(nplus)
-        nminus_index = self.get_node_index(nminus)
-        self.port2node = {0: nplus_index,
-                          1: nminus_index}
+        self.port2node = {0: self.get_node_index(nplus),
+                          1: self.get_node_index(nminus)}
 
-    def setup(self, dt):
-        """Define the resistor jacobian stamp.
-        """
+    def update(self):
         if self.value:  # if non-zero:
             g = 1.0 / self.value
         else:
@@ -92,17 +78,20 @@ class R(Device):
         self.jac[1, 0] = -g
         self.jac[1, 1] = g
 
-    def step(self, t, dt):
-        """Do nothing here. Linear and time-invariant device.
-        """
+    def start(self, dt):
+        self.update()
+
+    def step(self, dt, t):
+        """Do nothing here. Linear and time-invariant device."""
         pass
 
 
 class C(Device):
     """SPICE capacitor device"""
 
-    def __init__(self, name, node1, node2, value, mname=None, l=None, w=None,
-                 ic=None):
+    def __init__(self, nodes, value, mname=None, l=None, w=None, ic=None,
+                 **parameters):
+
         """General form:
         CXXXXXXX N+ N- VALUE <IC=INCOND>
 
@@ -147,28 +136,31 @@ class C(Device):
 
         CAP = CJ(LENGTH - NARROW)(WIDTH - NARROW) + 2.CJSW(LENGTH + WIDTH - 2.NARROW)
         """
-        Device.__init__(self, name, 2)
-        self.nodes = [node1, node2]
-        self.node2port = {node1: 0, node2: 1}
+        Device.__init__(self, nodes, 0, **parameters)
         self.value = value
         self.ic = ic
 
-    def setup(self, dt):
+    def connect(self):
+        npos, nneg = self.nodes
+        self.port2node = {0: self.get_node_index(npos),
+                          1: self.get_node_index(nneg)}
+
+    def start(self, dt):
         self.jac[0, 0] = self.value / dt
         self.jac[0, 1] = -self.value / dt
         self.jac[1, 0] = -self.value / dt
         self.jac[1, 1] = self.value / dt
 
-    def step(self, t, dt):
-        vc = self.get_across_history(1) - self.get_across_history(0)
-        self.bequiv[0] = -self.value / dt * vc
-        self.bequiv[1] = self.value / dt * vc
+    def step(self, dt, t):
+        vc = self.get_across_history(0, 1)
+        self.bequiv[0] = self.value / dt * vc
+        self.bequiv[1] = -self.value / dt * vc
 
 
 class L(Device, CurrentSensor):
     """SPICE Inductor Device"""
 
-    def __init__(self, name, node1, node2, internal, value, ic=None):
+    def __init__(self, nodes, value, ic=None, res=0.0, **parameters):
         """
         General form:
         LYYYYYYY N+ N- VALUE <IC=INCOND>
@@ -182,29 +174,34 @@ class L(Device, CurrentSensor):
         initial conditions (if any) apply only if the UIC option is specified on the
         .TRAN analysis line.
         """
-        Device.__init__(self, name, 3)
-        self.nodes = [node1, node2, internal]
-        self.node2port = {node1: 0, node2: 1, internal: 2}
+        Device.__init__(self, nodes, 1, **parameters)
         self.value = value
         self.ic = ic
+        self.res = res
 
-    def setup(self, dt):
+    def connect(self):
+        nplus, nminus = self.nodes
+        self.port2node = {0: self.get_node_index(nplus),
+                          1: self.get_node_index(nminus),
+                          2: self.create_internal("{0}_int".format(self.name))}
+
+    def start(self, dt):
         self.jac[0, 2] = 1.0
         self.jac[1, 2] = -1.0
         self.jac[2, 0] = 1.0
         self.jac[2, 1] = -1.0
-        self.jac[2, 2] = -self.value / dt
+        self.jac[2, 2] = -(self.res + self.value / dt)
 
-    def step(self, t, dt):
-        inductor_current = self.subckt.across_history[self.nodes[2]]
-        self.bequiv[2] = self.value / dt * inductor_current
+    def step(self,  dt, t):
+        inductor_current = self.get_across_history(2)
+        self.bequiv[2] = -self.value / dt * inductor_current
 
     def get_current_node(self):
-        return self.nodes[2]
+        return self.port2node[2], 1.0
 
 
 class K(Device):
-    def __init__(self, name, l1name, l2name, value):
+    def __init__(self, l1name, l2name, value, **parameters):
         """
         Coupled (Mutual) Inductors
 
@@ -218,44 +215,34 @@ class K(Device):
         equal to 1. Using the 'dot' convention, place a 'dot' on the first node of each
         inductor.
         """
-        Device.__init__(self, name, 6)
-        self.name = name
+        Device.__init__(self, [0, 0], 0, **parameters)
         self.value = value
         self.l1name = l1name
         self.l2name = l2name
-        self.node11 = None
-        self.node12 = None
-        self.internal1 = None
-        self.internal2 = None
-        self.node21 = None
-        self.node22 = None
-        self.nodes = None
-        self.node2port = None
-        self.inductance1 = None
-        self.inductance2 = None
+        self.L1 = None
+        self.L2 = None
         self.mutual = None
 
-    def setup(self, dt):
-        inductor1 = self.subckt.devices[self.l1name]
-        inductor2 = self.subckt.devices[self.l2name]
-        self.node11, self.node12, self.internal1 = inductor1.nodes
-        self.node21, self.node22, self.internal2 = inductor2.nodes
-        self.nodes = [self.node11, self.node12, self.internal1, self.node21,
-                      self.node22, self.internal2]
-        self.node2port = {self.node11: 0, self.node12: 1, self.internal1: 2,
-                          self.node21: 3, self.node22: 4, self.internal2: 5}
-        self.inductance1 = self.subckt.devices[self.l1name].value
-        self.inductance2 = self.subckt.devices[self.l2name].value
-        self.mutual = self.value * math.sqrt(
-            self.inductance1 * self.inductance2)
-        self.jac[2, 5] = -self.mutual / dt
-        self.jac[5, 2] = -self.mutual / dt
+    def connect(self):
+        inductor1 = self.netlist.devices[self.l1name]
+        inductor2 = self.netlist.devices[self.l2name]
+        self.L1 = inductor1.value
+        self.L2 = inductor2.value
+        self.mutual = self.value * math.sqrt(self.L1 * self.L2)
+        node1, k = inductor1.get_current_node()
+        node2, k = inductor2.get_current_node()
+        self.port2node = {0: node1,
+                          1: node2}
 
-    def step(self, t, dt):
-        current1 = self.subckt.across_history[self.internal1]
-        current2 = self.subckt.across_history[self.internal2]
-        self.bequiv[2] = self.mutual / dt * current2
-        self.bequiv[5] = self.mutual / dt * current1
+    def start(self, dt):
+        self.jac[0, 1] = -self.mutual / dt
+        self.jac[1, 0] = -self.mutual / dt
+
+    def step(self,  dt, t):
+        current1 = self.get_across_history(0)
+        current2 = self.get_across_history(1)
+        self.bequiv[0] = self.mutual / dt * current2
+        self.bequiv[1] = self.mutual / dt * current1
 
 
 class S(Device, CurrentSensor):
@@ -367,7 +354,7 @@ class S(Device, CurrentSensor):
 
         self.kwargs = kwargs
 
-    def setup(self, dt):
+    def start(self, dt):
         """Initialize the switch model for t=0."""
 
         # transfer model params from model to member variables (__dict__) if
@@ -400,11 +387,11 @@ class S(Device, CurrentSensor):
 
         self.bequiv[2] = 0.0
 
-    def step(self, t, dt):
+    def step(self, dt, t):
         """Do nothing here. Non-linear behavior is modeled in minor_step()."""
         pass
 
-    def minor_step(self, k, t, dt):
+    def minor_step(self, dt, t, k):
         """
         Update the jacobian and b-equivalent for this switch for this iteration.
         :param k: current netwon iteration index
@@ -496,10 +483,7 @@ class V(Device, CurrentSensor):
         are omitted or set to zero, the default values shown are assumed. (TSTEP is the printing
         increment and TSTOP is the final time (see the .TRAN control line for explanation)).
         """
-        Device.__init__(self, 3, **kwargs)
-
-        assert len(nodes) == 2
-        self.nodes = nodes
+        Device.__init__(self, nodes, 1, **kwargs)
 
         # determine type of value provided:
         if isinstance(value, Stimulus):
@@ -512,17 +496,14 @@ class V(Device, CurrentSensor):
         self.res = res
         self.induct = induct
 
-    def map_nodes(self):
-        assert self.netlist is not None
+    def connect(self):
         nplus, nminus = self.nodes
-        nplus_index = self.get_node_index(nplus)
-        nminus_index = self.get_node_index(nminus)
-        internal_index = self.create_internal(self.name)
-        self.port2node = {0: nplus_index,
-                          1: nminus_index,
-                          2: internal_index}
+        self.port2node = {0: self.get_node_index(nplus),
+                          1: self.get_node_index(nminus),
+                          2: self.create_internal("{0}_int".format(self.name))}
 
-    def setup(self, dt):
+    def start(self, dt):
+
         self.jac[0, 2] = 1.0
         self.jac[1, 2] = -1.0
         self.jac[2, 0] = 1.0
@@ -531,17 +512,16 @@ class V(Device, CurrentSensor):
 
         volt = 0.0
         if self.stimulus:
-            volt = self.stimulus.setup(dt)
+            volt = self.stimulus.start(dt)
         elif self.value:
             volt = self.value
 
         self.bequiv[2] = volt
 
-    def step(self, t, dt):
-        """Step the voltage source.
-        """
+    def step(self, dt, t):
+
         if self.stimulus:
-            volt = self.stimulus.step(t, dt)
+            volt = self.stimulus.step(dt, t)
         else:
             volt = self.value
 
@@ -552,10 +532,6 @@ class V(Device, CurrentSensor):
         self.bequiv[2] = volt
 
     def get_current_node(self):
-        """So this device can be used as a current sensor.
-        This function returns the node index of the internal current state
-        variable node.
-        """
         return self.port2node[2], -1.0
 
 
@@ -580,7 +556,7 @@ class I(Device):
 
         self.resistance = resistance
 
-    def setup(self, dt):
+    def start(self, dt):
 
         g = 0.0
         if self.resistance > 0.0:
@@ -593,18 +569,18 @@ class I(Device):
 
         current = 0.0
         if self.stimulus:
-            current = self.stimulus.setup(dt)
+            current = self.stimulus.start(dt)
         elif self.value:
             current = self.value
 
         self.bequiv[0] = current
         self.bequiv[1] = -current
 
-    def step(self, t, dt):
+    def step(self, dt, t):
         """Step the current source.
         """
         if self.stimulus:
-            current = self.stimulus.step(t, dt)
+            current = self.stimulus.step(dt, t)
         else:
             current = self.value
 
@@ -674,7 +650,7 @@ class E(Device, CurrentSensor):
         self.subckt = None
         self.limit = limit
 
-    def setup(self, dt):
+    def start(self, dt):
         """Define the initial VCVS jacobian stamp."""
 
         if self.gain:
@@ -689,7 +665,7 @@ class E(Device, CurrentSensor):
         self.jac[4, 2] = k
         self.jac[4, 3] = -k
 
-    def step(self, t, dt):
+    def step(self, dt, t):
         """TODO Doc"""
 
         if self.table:
@@ -747,8 +723,8 @@ class U(Device):
 class D(Device):
     """Represents a SPICE Diode device."""
 
-    def __init__(self, name, nplus, nminus, mname=None, area=None, off=None,
-                 ic=None, temp=None, **kwargs):
+    def __init__(self, nodes, model=None, area=None, off=None,
+                 ic=None, temp=None, **parameters):
         """
         General form:
 
@@ -768,18 +744,15 @@ class D(Device):
         temperature at which this device is to operate, and overrides the temperature
         specification on the .OPTION control line.
         """
-        Device.__init__(self, name, 2)
-        self.nodes = [nplus, nminus]
-        self.node2port = {nplus: 0, nminus: 1}
-        self.mname = mname
+        Device.__init__(self, nodes, 0, **parameters)
+        self.mname = model
         self.area = area
         self.off = off
         self.ic = ic
         self.temp = temp
-        self.kwargs = kwargs  # these will be used to override the default or model params (see setup() function)
 
-        # model parameters:
-        self.Is = 1.0e-14  # can't be 'is' because 'is' is a keyword
+        # default model parameters:
+        self.is_ = 1.0e-14
         self.rs = 0.0
         self.n = 1.0
         self.tt = 0.0
@@ -796,32 +769,38 @@ class D(Device):
         self.tnom = 27.0
         self.model = None
 
-    def setup(self, dt):
-        """Initialize the diode device at t-0."""
+    def connect(self):
+        nplus, nminus = self.nodes
+        self.port2node = {0: self.get_node_index(nplus),
+                          1: self.get_node_index(nminus)}
+
+    def start(self, dt):
 
         # transfer model params from model to member variables (__dict__)
         # if one is asscociated with this device:
+
         if self.model:
-            for key in self.model.params:
+            for key in self.model.parameters:
                 if key in self.__dict__:
-                    self.__dict__[key] = self.model.params[key]
+                    self.__dict__[key] = self.model.parameters[key]
 
         # now override with any passed-in keyword args:
-        if self.kwargs:
-            for key in self.kwargs:
-                if key in self.__dict__:
-                    self.__dict__[key] = self.kwargs[key]
 
-    def step(self, t, dt):
+        if self.parameters:
+            for key in self.parameters:
+                if key in self.__dict__:
+                    self.__dict__[key] = self.parameters[key]
+
+    def step(self, dt, t):
         """ Do nothing here. Non-linear device."""
         pass
 
-    def minor_step(self, k, t, dt):
+    def minor_step(self, dt, t, k):
         vt = 25.85e-3
         v = self.get_across(0, 1)
         v = min(v, 0.8)
-        geq = self.Is / vt * math.exp(v / vt)
-        ieq = self.Is * (math.exp(v / vt) - 1.0)
+        geq = self.is_ / vt * math.exp(v / vt)
+        ieq = self.is_ * (math.exp(v / vt) - 1.0)
         beq = ieq - geq * v
         self.jac[0, 0] = geq
         self.jac[0, 1] = -geq
@@ -880,13 +859,13 @@ class GenericTwoPort(Device):
         # self.get_g = sympy.lambdify(v, self.g, "math")
         # self.get_i = sympy.lambdify(v, self.i, "math")
 
-    def setup(self, dt):
+    def start(self, dt):
         pass
 
-    def step(self, t, dt):
+    def step(self, dt, t):
         pass
 
-    def minor_step(self, k, t, dt):
+    def minor_step(self, dt, t, k):
         v = (self.subckt.across[self.nodes[1]] -
              self.subckt.across[self.nodes[0]])
 
@@ -1161,7 +1140,7 @@ class Pulse(Stimulus):
         self.per = per
         self.device = None
 
-    def setup(self, dt):
+    def start(self, dt):
         if self.tr is None:
             self.tr = dt
         if self.tf is None:
@@ -1172,7 +1151,7 @@ class Pulse(Stimulus):
             self.per = float('inf')
         return self.v1
 
-    def step(self, t, dt):
+    def step(self, dt, t):
         t %= self.per
         if (self.td + self.tr) <= t < (self.td + self.tr + self.pw):
             return self.v2
@@ -1220,11 +1199,11 @@ class Sin(Stimulus):
         self.phi = phi
         self.device = None
 
-    def setup(self, dt):
+    def start(self, dt):
         """Sets up the pulse stimulus and returns the initial output."""
-        return self.step(0, dt)
+        return self.step(dt, 0.0)
 
-    def step(self, t, dt):
+    def step(self, dt, t):
         """Update and return the stimulus value at the current time."""
         if t < self.td:
             return 0.0
@@ -1258,7 +1237,7 @@ class Exp(Stimulus):
         self.td2 = td2
         self.tau2 = tau2
 
-    def setup(self, dt):
+    def start(self, dt):
         """Initialize the Exp output at time 0s."""
         if not self.tau1:
             self.tau1 = dt
@@ -1266,20 +1245,20 @@ class Exp(Stimulus):
             self.td2 = self.td1 + dt
         if not self.tau2:
             self.tau2 = dt
-        return self.step(dt)
+        return self.step(dt, 0.0)
 
-    def step(self, t, dt):
+    def step(self, dt, t):
         """Update and return the current value of the Exp stimulus"""
         if 0.0 >= t < self.td1:
             return self.v1
         elif self.td1 <= t < self.td1:
             return self.v1 + (self.v2 - self.v2) * (
-            1.0 - math.exp(-(t - self.td1) / self.tau1))
+                   1.0 - math.exp(-(t - self.td1) / self.tau1))
         else:
             return (1.0 + (self.v2 - self.v1)
                     * (1.0 - math.exp(-(t - self.td1) / self.tau1))
                     + (self.v1 - self.v2) * (
-            1.0 - math.exp(-(t - self.td2) / self.tau2)))
+                    1.0 - math.exp(-(t - self.td2) / self.tau2)))
 
 
 class Pwl(Stimulus):
@@ -1295,10 +1274,10 @@ class Pwl(Stimulus):
                 pass
             pass
 
-    def setup(self, dt):
+    def start(self, dt):
         pass
 
-    def step(self, dt):
+    def step(self, dt, t):
         x = self.device.get_time()
         return self._interp_(x)
 
@@ -1320,10 +1299,10 @@ class Sffm(Stimulus):
     def __init__(self, vo, va, fc, md1, fs):
         pass  # todo
 
-    def setup(self, dt):
+    def start(self, dt):
         pass
 
-    def step(self, dt):
+    def step(self, dt, t):
         pass
 
 

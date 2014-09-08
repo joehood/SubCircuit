@@ -117,7 +117,7 @@ class MainFrame(ui.MainFrame):
         self.SetIcon(icon)
         self.debugger = Debugger()
 
-        self.script = 'Examples/full_wave_rectifier.py'
+        self.script = 'examples.py'
 
         # add editor:
         self.editor = Editor(self.pnl_editor, 0, self.script)
@@ -161,7 +161,7 @@ def _main_():
     import ctypes
 
     myappid = 'pyspyce'
-    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+    # ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     # Start GUI:
     app = wx.App()
     frame = MainFrame()
