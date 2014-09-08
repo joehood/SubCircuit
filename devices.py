@@ -44,8 +44,8 @@ class R(Device):
         Examples:
         R1 1 2 100
         RC1 12 17 1K
-        N1 and N2 are the two element nodes. VALUE is the resistance (in ohms) and
-        may be positive or negative but not zero.
+        N1 and N2 are the two element nodes. VALUE is the resistance (in ohms)
+        and may be positive or negative but not zero.
 
         Semiconductor Resistors:
         General form:

@@ -1,9 +1,9 @@
-
-
+from __future__ import print_function
 import wx
 
 
-app = wx.App()
-fr = wx.Frame(None)
-fr.Show()
-app.MainLoop()
+if __name__ == '__main__':
+    app = wx.App()
+    fr = wx.Frame(None)
+    fr.Show()
+    app.MainLoop()
