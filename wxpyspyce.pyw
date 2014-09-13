@@ -27,6 +27,7 @@ SHOW_CROSSHAIR = False
 MOVE_DELTA = GRID_SIZE
 GHOST_COLOR = GRID_COLOR
 DEF_DEVICE = "R"
+FONT_SIZE = 20
 
 # endregion
 
@@ -51,6 +52,9 @@ class SchematicObject(object):
         if self.bounding_rect:
             x, y, w, h = self.bounding_rect
             self.bounding_rect = (x + dx, y + dx, w, h)
+
+    def rotate(self, angle):
+        self.rotation += angle
 
     def hittest(self, point):
         x, y = point
@@ -123,18 +127,31 @@ class Connector(SchematicObject):
         return str(self)
 
 
+class BlockField(SchematicObject):
+    def __init__(self, name, text, position=(0, 0)):
+        SchematicObject.__init__(self)
+        self.name = name
+        self.text = text
+        self.position = position
+
+
 class Block(SchematicObject):
     def __init__(self, name, engine, is_ground=False):
         SchematicObject.__init__(self)
         self.name = name
-        self.ports = {}
-        self.properties = {}
-        self.outputs = {}
-        self.lines = []
-        self.circles = []
         self.is_ghost = False
         self.is_ground = is_ground
         self.engine = engine
+
+        self.ports = odict()
+        self.properties = odict()
+        self.outputs = odict()
+        self.lines = []
+        self.circles = []
+        self.arcs = []
+        self.fields = odict()
+
+        self.fields['name'] = BlockField('name', name)
 
     def get_engine(self, nodes):
         raise NotImplementedError()
@@ -157,14 +174,14 @@ class RBlock(Block):
         self.ports['negative'] = Port(self, 1, (50, 100))
 
         # properties:
-        self.properties['resistance'] = 1.0
+        self.properties['Resistance (R)'] = 1.0
 
         # resistor shape:
         self.lines.append(((50, 0),(50, 20),(35, 25),(65, 35),(35, 45),
                            (65, 55),(35, 65),(65, 75),(50, 80),(50, 100)))
 
     def get_engine(self, nodes):
-        return R(nodes, self.properties['resistance'])
+        return R(nodes, self.properties['Resistance (R)'])
 
 
 class CBlock(Block):
@@ -178,7 +195,7 @@ class CBlock(Block):
         self.ports['negative'] = Port(self, 1, (50, 100))
 
         # properties:
-        self.properties['capacitance'] = 1.0
+        self.properties['Capacitance (F)'] = 0.1
 
         # leads:
         self.lines.append(((50, 0), (50, 40)))
@@ -189,7 +206,35 @@ class CBlock(Block):
         self.lines.append(((30, 60), (70, 60)))
 
     def get_engine(self, nodes):
-        return C(nodes, self.properties['capacitance'])
+        return C(nodes, self.properties['Capacitance (F)'])
+
+
+class LBlock(Block):
+    def __init__(self, name):
+
+        # init super:
+        Block.__init__(self, name, L)
+
+        # ports:
+        self.ports['positive'] = Port(self, 0, (50, 0))
+        self.ports['negative'] = Port(self, 1, (50, 100))
+
+        # properties:
+        self.properties['Inductance (H)'] = 0.1
+
+        # leads:
+        self.lines.append(((50, 0), (50, 20)))
+        self.lines.append(((50, 80), (50, 100)))
+
+        # coils (x, y, r, ang0, ang1, clockwise)
+        ang1 = -math.pi * 0.5
+        ang2 = math.pi * 0.5
+        self.arcs.append((50, 30, 10, ang1, ang2, True))
+        self.arcs.append((50, 50, 10, ang1, ang2, True))
+        self.arcs.append((50, 70, 10, ang1, ang2, True))
+
+    def get_engine(self, nodes):
+        return L(nodes, self.properties['Inductance (H)'])
 
 
 class VBlock(Block):
@@ -203,7 +248,7 @@ class VBlock(Block):
         self.ports['negative'] = Port(self, 1, (50, 100))
 
         # properties:
-        self.properties['voltage'] = 1.0
+        self.properties['Voltage (V)'] = 1.0
 
         # leads:
         self.lines.append(((50, 0), (50, 25)))
@@ -217,7 +262,81 @@ class VBlock(Block):
         self.circles.append((50, 50, 25))
 
     def get_engine(self, nodes):
-        return V(nodes, self.properties['voltage'])
+        return V(nodes, self.properties['Voltage (V)'])
+
+
+class VSinBlock(Block):
+    def __init__(self, name):
+
+        # init super:
+        Block.__init__(self, name, V)
+
+        # ports:
+        self.ports['positive'] = Port(self, 0, (50, 0))
+        self.ports['negative'] = Port(self, 1, (50, 100))
+
+        # properties:
+        self.properties['Voltage Offset (V)'] = 0.0
+        self.properties['Voltage Amplitude (V)'] = 1.0
+        self.properties['Frequency (Hz)'] = 60.0
+        self.properties['Delay (s)'] = 0.0
+        self.properties['Damping factor (1/s)'] = 0.0
+        self.properties['Phase (rad)'] = 0.0
+
+        # leads:
+        self.lines.append(((50, 0), (50, 25)))
+        self.lines.append(((50, 75), (50, 100)))
+
+        # plus:
+        self.lines.append(((50, 33), (50, 43)))
+        self.lines.append(((45, 38), (55, 38)))
+
+        # circle
+        self.circles.append((50, 50, 25))
+
+        # sine:
+        a1 = math.pi * 1.0
+        a2 = math.pi * 0.0
+        self.arcs.append((43, 58, 7, a1, a2, True))
+        self.arcs.append((57, 58, 7, -a1, -a2, False))
+
+    def get_engine(self, nodes):
+
+        vo = self.properties['Voltage Offset (V)']
+        va = self.properties['Voltage Amplitude (V)']
+        freq = self.properties['Frequency (Hz)']
+        td = self.properties['Delay (s)']
+        theta = self.properties['Damping factor (1/s)']
+        phi = self.properties['Phase (rad)']
+
+        sine = Sin(vo, va, freq, td, theta, phi)
+        return V(nodes, sine)
+
+
+class DBlock(Block):
+    def __init__(self, name):
+
+        Block.__init__(self, name, D)
+
+        # ports:
+        self.ports['anode'] = Port(self, 0, (50, 100))
+        self.ports['cathode'] = Port(self, 1, (50, 0))
+
+        # properties:
+        self.properties['Isat (I)'] = 1.0E-9
+        self.properties['Vt (V)'] = 25.85e-3
+
+        # leads:
+        self.lines.append(((50, 0), (50, 37)))
+        self.lines.append(((50, 63), (50, 100)))
+
+        # diode symbol:
+        self.lines.append(((50, 37), (32, 63), (68, 63), (50, 37)))
+        self.lines.append(((32, 37), (68, 37)))
+
+
+    def get_engine(self, nodes):
+        return D(nodes)
 
 
 class GndBlock(Block):
@@ -243,7 +362,8 @@ class GndBlock(Block):
 
 
 # device type name to class mapping:
-DEVICELIB = dict(R=RBlock, C=CBlock, V=VBlock, GND=GndBlock)
+DEVICELIB = dict(R=RBlock, C=CBlock, L=LBlock, V=VBlock,
+                 VSin=VSinBlock, D=DBlock, GND=GndBlock)
 
 
 class Mode(object):
@@ -260,10 +380,57 @@ class Schematic(object):
         self.name = name
         self.blocks = {}
         self.connectors = []
+        self.sim_settings = {'dt': 0.01, 'tmax': 10.0, 'maxitr': 100,
+                             'tol': 0.00001, 'voltages': "2", 'currents': "V1"}
+
+
+class PropertyDialog(gui.PropertyDialog):
+    def __init__(self, parent, properties):
+        self.armed = False
+        gui.PropertyDialog.__init__(self, parent)
+        self.types = []
+        self.keys = []
+        self.properties = properties
+        self.n = len(self.properties)
+        self.propgrid.InsertRows(0, self.n)
+        for i, (name, value) in enumerate(self.properties.items()):
+            type_ = type(value)
+            self.types.append(type_)
+            self.keys.append(name)
+            self.propgrid.SetCellValue(i, 0, str(value))
+            self.propgrid.SetRowLabelValue(i, str(name))
+        self.armed = True
+        self.szr_main.Fit(self)
+        self.Layout()
+
+    def on_grid_update(self, event):
+        if self.armed:
+            for i in range(self.n):
+                type_ = self.types[i]
+                key = self.keys[i]
+                value = self.propgrid.GetCellValue(i, 0)
+                try:
+                    self.properties[key] = type_(value)
+                except:
+                    pass
+
+
+def update_properties(parent, properties):
+    propdlg = PropertyDialog(parent, properties)
+
+    if propdlg.ShowModal() == wx.ID_OK:
+        for key, value in propdlg.properties.items():
+            if key in properties:
+                type_ = type(value)
+                if type_ is type(properties[key]):
+                    properties[key] = value
+    return properties
 
 
 class SchematicWindow(wx.Panel):
     def __init__(self, parent, schematic=None, name=""):
+
+        self.path = ""
 
         if schematic:
             self.schematic = schematic
@@ -276,6 +443,7 @@ class SchematicWindow(wx.Panel):
         self.name = schematic.name
         self.blocks = schematic.blocks
         self.connectors = schematic.connectors
+        self.sim_settings = schematic.sim_settings
 
         # init super:
         wx.Panel.__init__(self, parent)
@@ -289,6 +457,7 @@ class SchematicWindow(wx.Panel):
         self.Bind(wx.EVT_RIGHT_DOWN, self.on_right_down)
         self.Bind(wx.EVT_KEY_UP, self.on_key_up)
         self.Bind(wx.EVT_LEFT_UP, self.on_left_up)
+        self.Bind(wx.EVT_LEFT_DCLICK, self.on_dclick)
 
         # drawing context:
         self.gc = None
@@ -356,18 +525,29 @@ class SchematicWindow(wx.Panel):
             type_ = DEF_DEVICE
 
         if not name:
-            name = "{0}{1}".format(type_, self.new_counter)
+            i = 1
+            name = "{0}{1}".format(type_, i)
             while name in self.blocks:
-                self.new_counter += 1
-                name = "{0}{1}".format(type_, self.new_counter)
+                i += 1
+                name = "{0}{1}".format(type_, i)
 
         self.ghost = DEVICELIB[type_](name)
         self.mode = Mode.ADD_DEVICE
-        self.new_counter += 1
         self.blocks[name] = self.ghost
         self.ghost.is_ghost = True
         self.ghost.translate((-50, -50))
         self.SetFocus()
+
+    def on_dclick(self, event):
+        self.update_position(event)
+        pt = self.x, self.y
+        block = None
+        for name, blk in self.blocks.items():
+            if blk.hittest(pt):
+                block = blk
+                break
+        if block:
+            block.properties = update_properties(self, block.properties)
 
     def on_left_up(self, event):
         self.drug = False
@@ -394,9 +574,24 @@ class SchematicWindow(wx.Panel):
         if self.mode == Mode.STANDBY:
             port_hit = False
             block_hit = False
+            field_hit = False
             for name, block in self.blocks.items():
+                for name, field in block.fields.items():
+                    if field.hittest(pt):
+                        if field.selected:
+                            field.selected = False
+                            self.selected_objects.remove(field)
+                        else:
+                            field.selected = True
+                            field_hit = True
+                        if not (ctrl or shft):
+                            self.selected_objects = []
+                        self.selected_objects.append(field)
+                    elif not (ctrl or shft):
+                        field.selected = False
+
                 for name, port in block.ports.items():
-                    if port.hittest(pt):
+                    if port.hittest(pt) and not field_hit:
                         port_hit = True
                         port.selected = True
                         self.mode = Mode.CONNECT
@@ -408,7 +603,7 @@ class SchematicWindow(wx.Panel):
                         self.active_connector = connector
                     else:
                         port.selected = False
-                if block.hittest(pt) and not port_hit and not self.drug:
+                if block.hittest(pt) and not port_hit and not field_hit:
                     if block.selected:
                         block.selected = False
                         self.selected_objects.remove(block)
@@ -420,7 +615,7 @@ class SchematicWindow(wx.Panel):
                         self.selected_objects.append(block)
                 elif not (ctrl or shft):
                     block.selected = False
-            if not (port_hit or block_hit):
+            if not (port_hit or block_hit or field_hit):
                 self.deselect_all()
 
         elif self.mode == Mode.CONNECT:
@@ -480,18 +675,26 @@ class SchematicWindow(wx.Panel):
                     self.y0 = event.y
                 self.Refresh()
             else:  # moving but not dragging:
-                hit = False
+                port_hit = False
+                block_hit = False
+                field_hit = False
                 pt = self.x, self.y
                 for block in self.blocks.values():
+                    for name, field in block.fields.items():
+                        if field.hittest(pt):
+                            field.hover = True
+                            field_hit = True
+                        else:
+                            field.hover = False
                     for port in block.ports.values():
-                        if port.hittest(pt):
+                        if port.hittest(pt) and not field_hit:
                             port.hover = True
-                            hit = True
+                            port_hit = True
                         else:
                             port.hover = False
-                    if block.hittest(pt) and not hit:
+                    if block.hittest(pt) and not port_hit and not field_hit:
                         block.hover = True
-                        hit = True
+                        block_hit = True
                     else:
                         block.hover = False
                 if self.mode == Mode.CONNECT:
@@ -542,6 +745,10 @@ class SchematicWindow(wx.Panel):
             for obj in self.selected_objects:
                 obj.translate((MOVE_DELTA, 0))
 
+        elif chr(code) == 'R':
+            if self.mode == Mode.ADD_DEVICE:
+                self.ghost.rotate(90)
+
         self.Refresh()
 
     def on_right_down(self, event):
@@ -574,22 +781,31 @@ class SchematicWindow(wx.Panel):
         return bounding, center
 
     def render_block(self, block, gc):
+
+        font = wx.Font(FONT_SIZE, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL,
+                            wx.FONTWEIGHT_BOLD, False, 'Courier 10 Pitch')
+
         if block.is_ghost:
             gc.SetPen(self.pen_ghost)
             gc.SetBrush(self.brush_ghost)
+
         elif block.selected:
             gc.SetPen(self.pen_select)
             gc.SetBrush(self.brush_select)
+
         elif block.hover:
             gc.SetPen(self.pen_hover)
             gc.SetBrush(self.brush_hover)
+
         else:
             gc.SetPen(self.pen)
             gc.SetBrush(self.brush)
 
         x, y = block.position
+        rad = block.rotation * 0.0174532925
         matrix = gc.CreateMatrix()
         matrix.Translate(x, y)
+        matrix.Rotate(rad)
         path = gc.CreatePath()
 
         for line in block.lines:
@@ -601,28 +817,74 @@ class SchematicWindow(wx.Panel):
         for circle in block.circles:
             path.AddCircle(*circle)
 
+        for arc in block.arcs:
+            x, y, r, a1, a2, clk = arc
+            x0 = x + r * math.cos(a1)
+            y0 = y + r * math.sin(a1)
+            path.MoveToPoint((x0, y0))
+            path.AddArc(x, y, r, a1, a2, clk)
+
+        # for curve in block.curves:
+        #    for cx, cy, x, y in curve.points:
+
+
         path.Transform(matrix)
         gc.StrokePath(path)
 
         block.bounding_rect, block.center = self.get_bounding(path)
+
+        for key, field in block.fields.items():
+
+            if block.is_ghost:
+                gf = gc.CreateFont(font, GHOST_COLOR)
+
+            elif field.selected or block.selected:
+                gf = gc.CreateFont(font, SELECT_COLOR)
+
+            elif field.hover or block.hover:
+                gf = gc.CreateFont(font, HOVER_COLOR)
+
+            else:
+                gf = gc.CreateFont(font, DEVICE_COLOR)
+
+            gc.SetFont(gf)
+
+            x, y, w, h = block.bounding_rect
+            xo, yo = field.position
+            xt, yt = x + xo, y + yo
+            gc.DrawText(field.text, xt, yt)
+            w, h, d, e = gc.GetFullTextExtent(field.text)
+            field.bounding_rect = (xt, yt, w, h)
+            field.center = (xt + w * 0.5, yt + h * 0.5)
 
         for name, port in block.ports.items():
 
             if block.is_ghost:
                 gc.SetPen(self.pen_ghost)
                 gc.SetBrush(self.brush_ghost)
+                gf = gc.CreateFont(font, GHOST_COLOR)
+
             elif block.selected:
                 gc.SetPen(self.pen_select)
                 gc.SetBrush(self.brush_select)
+                gf = gc.CreateFont(font, SELECT_COLOR)
+
             elif port.selected:
                 gc.SetPen(self.pen)
                 gc.SetBrush(self.brush)
+                gf = gc.CreateFont(font, DEVICE_COLOR)
+
             elif port.hover or block.hover:
                 gc.SetPen(self.pen_hover)
                 gc.SetBrush(self.brush_hover)
+                gf = gc.CreateFont(font, HOVER_COLOR)
+
             else:
                 gc.SetPen(self.pen)
                 gc.SetBrush(self.brush)
+                gf = gc.CreateFont(font, DEVICE_COLOR)
+
+            gc.SetFont(gf)
 
             (x, y), r, m = port.position, port.radius, port.hit_margin
             path = gc.CreatePath()
@@ -759,7 +1021,6 @@ class SchematicWindow(wx.Panel):
         return netlist
 
 
-
 class MainFrame(gui.MainFrame):
     DEF_NAME = "Cir{0}"
 
@@ -785,8 +1046,12 @@ class MainFrame(gui.MainFrame):
             self.active_schem.start_add(type_)
 
     def save_schematic(self, schem, path):
-        f = open(path, 'w')
-        pickle.dump(schem.schematic, f)
+        try:
+            with open(path, 'w') as f:
+                pickle.dump(schem.schematic, f)
+                wx.MessageBox("File saved to: [{0}]".format(path))
+        except Exception as e:
+            wx.MessageBox("File save failed. {0}".format(e.message))
 
     def open_schematic(self, path):
         d, name = os.path.split(path)
@@ -800,8 +1065,27 @@ class MainFrame(gui.MainFrame):
 
     def run(self):
         netlist = self.active_schem.build_netlist()
-        netlist.trans(0.1, 1)
-        netlist.plot(Current('V4'))
+
+        settings = self.active_schem.sim_settings
+
+        dt = settings['dt']
+        tmax = settings['tmax']
+        maxitr = settings['maxitr']
+        tol = settings['tol']
+        voltages = settings['voltages']
+        currents = settings['currents']
+
+        netlist.trans(dt, tmax)
+
+        chans = []
+
+        for v in voltages.split():
+            chans.append(Voltage(int(v.strip())))
+
+        for i in currents.split():
+            chans.append(Current(i.strip()))
+
+        netlist.plot(*chans)
 
     def on_new_schem(self, event):
         self.new_schem()
@@ -818,7 +1102,7 @@ class MainFrame(gui.MainFrame):
                 path = dlg.GetPath()
                 self.open_schematic(path)
 
-    def on_save(self, event):
+    def on_save_as(self, event):
         schem = None
         if self.active_schem:
             schem = self.active_schem
@@ -826,7 +1110,8 @@ class MainFrame(gui.MainFrame):
             schem = self.schematics[0]
 
         if schem:
-            name = "{0}.sch".format(schem.name)
+            name = schem.name.split(".")[0]
+            name = "{0}.sch".format(name)
             dlg = wx.FileDialog(self, message="Save Schematic",
                                 defaultFile=name,
                                 wildcard="*.sch",
@@ -835,6 +1120,18 @@ class MainFrame(gui.MainFrame):
             if dlg.ShowModal() == wx.ID_OK:
                 path = dlg.GetPath()
                 self.save_schematic(schem, path)
+                schem.path = path
+
+    def on_save(self, event):
+        schem = None
+        if self.active_schem:
+            schem = self.active_schem
+        elif self.schematics:
+            schem = self.schematics[0]
+
+        if schem:
+            if schem.path:
+                self.save_schematic(schem, schem.path)
 
     def on_add_ground(self, event):
         self.add_device("GND")
@@ -851,11 +1148,24 @@ class MainFrame(gui.MainFrame):
     def on_add_V(self, event):
         self.add_device("V")
 
+    def on_add_VSin(self, event):
+        self.add_device("VSin")
+
+    def on_add_VPulse(self, event):
+        self.add_device("VPulse")
+
+    def on_add_VPwl(self, event):
+        self.add_device("VPwl")
+
     def on_add_I(self, event):
         self.add_device("I")
 
+    def on_add_D(self, event):
+        self.add_device("D")
+
     def on_setup(self, event):
-        event.Skip()
+        self.active_schem.sim_settings = update_properties(self,
+                                            self.active_schem.sim_settings)
 
     def on_run(self, event):
         self.run()
@@ -871,10 +1181,10 @@ if __name__ == '__main__':
     frame = MainFrame()
     frame.SetSize((800, 600))
     frame.SetPosition((100, 100))
-    #frame.new_schem()
+    # frame.new_schem()
 
     frame.open_schematic("/Users/josephmhood/Documents/Cir1.sch")
-    frame.run()
+    # frame.run()
 
     # sch1 = frame.new_schematic("circuit1")
     #
