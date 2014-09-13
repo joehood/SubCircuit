@@ -44,11 +44,11 @@ import time
 
 
 """
-Example transformer
+Example Transformer (SPICE Netlist)
 VIN 1 0 SIN(0 170 60 0 0)
 L1 1 0 2000
 L2 2 0 200
-K L1 L2 0.99999
+K1 L1 L2 0.99999
 RL 2 0 500
 .TRAN 0.2M 25M
 .PLOT TRAN V(1)
@@ -56,14 +56,14 @@ RL 2 0 500
 .END
 """
 
-# netlist = Netlist("Example transformer")
-# netlist.device('V1N', V((1, 0), Sin(0, 170, 60, 0, 0), res=0.1))
-# netlist.device('L1', L((1, 0), 2000))
-# netlist.device('L2', L((2, 0), 200))
-# netlist.device('K', K('L1', 'L2', 0.99999))
-# netlist.device('RL', R((2, 0), 500.0))
-# netlist.trans(0.00002, 0.025)
-# netlist.plot(Voltage(1), Voltage(2))
+netlist = Netlist("Example Transformer (PySpyce Netlist)")
+netlist.device("V1N", V((1, 0), Sin(0, 170, 60, 0, 0)))
+netlist.device("L1", L((1, 0), 2000))
+netlist.device("L2", L((2, 0), 200))
+netlist.device("K1", K('L1', 'L2', 0.99999))
+netlist.device("RL", R((2, 0), 500.0))
+netlist.trans(0.00002, 0.025)
+netlist.plot(Voltage(1), Voltage(2))
 
 
 
@@ -182,43 +182,43 @@ Va( ~ ) Vb( ~ ) Vc( ~ )   |      |      |           o-------'
 
 """
 
-netlist = Netlist("Three-phase Rectifier")
-
-a = 2.0 / 3.0 * math.pi
-
-netlist.device("Va", V((1, 0), Sin(va=80.0, freq=60.0, phi=0), res=0, induct=0))
-netlist.device("Vb", V((2, 0), Sin(va=80.0, freq=60.0, phi=a), res=0, induct=0))
-netlist.device("Vc", V((3, 0), Sin(va=80.0, freq=60.0, phi=-a), res=0, induct=0))
-netlist.device("D1", D((1, 4)))
-netlist.device("D3", D((2, 4)))
-netlist.device("D5", D((3, 4)))
-netlist.device("D2", D((5, 1)))
-netlist.device("D4", D((5, 2)))
-netlist.device("D6", D((5, 3)))
-netlist.device("RL", R((6, 5), 10.0))
-netlist.device("Cf", C((6, 5), 0.0001))
-netlist.device("Lf", L((4, 6), 0.0001))
-
-netlist.simulator.tol = 0.1
-
-
-def load_step(dt, t):
-    if 0.02 < t < 0.04:
-        netlist.devices['RL'].value = 2.0
-    elif t > 0.04:
-        netlist.devices['RL'].value = 1.0
-
-netlist.simulation_hook = load_step
-
-netlist.trans(0.0001, 0.05)
-netlist.plot(Voltage(1),
-             Voltage(2),
-             Voltage(3),
-             Current('Va'),
-             Current('Vb'),
-             Current('Vc'),
-             Current('Lf'),
-             Voltage(4, 5))
+# netlist = Netlist("Three-phase Rectifier")
+#
+# a = 2.0 / 3.0 * math.pi
+#
+# netlist.device("Va", V((1, 0), Sin(va=80.0, freq=60.0, phi=0), res=0, induct=0))
+# netlist.device("Vb", V((2, 0), Sin(va=80.0, freq=60.0, phi=a), res=0, induct=0))
+# netlist.device("Vc", V((3, 0), Sin(va=80.0, freq=60.0, phi=-a), res=0, induct=0))
+# netlist.device("D1", D((1, 4)))
+# netlist.device("D3", D((2, 4)))
+# netlist.device("D5", D((3, 4)))
+# netlist.device("D2", D((5, 1)))
+# netlist.device("D4", D((5, 2)))
+# netlist.device("D6", D((5, 3)))
+# netlist.device("RL", R((6, 5), 10.0))
+# netlist.device("Cf", C((6, 5), 0.0001))
+# netlist.device("Lf", L((4, 6), 0.0001))
+#
+# netlist.simulator.tol = 0.1
+#
+#
+# def load_step(dt, t):
+#     if 0.02 < t < 0.04:
+#         netlist.devices['RL'].value = 2.0
+#     elif t > 0.04:
+#         netlist.devices['RL'].value = 1.0
+#
+# netlist.simulation_hook = load_step
+#
+# netlist.trans(0.0001, 0.05)
+# netlist.plot(Voltage(1),
+#              Voltage(2),
+#              Voltage(3),
+#              Current('Va'),
+#              Current('Vb'),
+#              Current('Vc'),
+#              Current('Lf'),
+#              Voltage(4, 5))
 
 
 """
@@ -363,26 +363,31 @@ Vt ( ^ )(4)  .----|  (6)   |     [ ]
 #              Current('X1_L'))
 
 
-# netlist = Netlist("Distributed Tline")
-#
-# section = netlist.subckt('section', Subckt((1, 2)))
-# section.device('L', L((1, 2), 0.001))
-# section.device('C', C((2, 0), 0.0001))
-#
-# netlist.device('V1', V((1, 0), Sin(0.0, 100.0, 60.0)))
-# netlist.device('X1', X((1, 2), subckt='section'))
-# netlist.device('X2', X((2, 3), subckt='section'))
-# netlist.device('X3', X((3, 4), subckt='section'))
-# netlist.device('X4', X((4, 5), subckt='section'))
-# netlist.device('R1', R((5, 0), 5.0))
-#
-# netlist.trans(0.0001, 0.1)
-#
-# netlist.plot(Voltage(1),
-#              Voltage(2),
-#              Voltage(3),
-#              Voltage(4),
-#              Current('X1_L'),
-#              Current('X2_L'),
-#              Current('X3_L'),
-#              Current('X4_L'))
+netlist = Netlist("Distributed Tline")
+
+# define section subckt:
+section = netlist.subckt('section', Subckt((1, 2)))
+section.device('L', L((1, 2), 0.001))
+section.device('C', C((2, 0), 0.0001))
+
+# source:
+netlist.device('V1', V((1, 0), Sin(0.0, 100.0, 60.0)))
+
+# add 6 sections:
+for i in range(1, 8):
+    name = "X{0}".format(i)
+    netlist.device(name, X((i, i+1), subckt='section'))
+
+# load:
+netlist.device('R1', R((8, 0), 5.0))
+
+# transient simulation:
+netlist.trans(0.0001, 0.1)
+
+# plot all voltages:
+voltages = []
+for i in range(1, 9):
+    voltages.append(Voltage(i))
+
+netlist.plot(*voltages)
+
