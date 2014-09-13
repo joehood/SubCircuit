@@ -3,8 +3,9 @@
 from __future__ import print_function, division
 
 import matplotlib.pyplot as plt
-from netlist import *
-from time import time, clock
+
+from src.netlist import *
+
 
 try:
     import wx

@@ -2,12 +2,13 @@
 
 from __future__ import print_function
 from copy import deepcopy as clone
-from interfaces import *
-from devices import *
-import simulator
+
 import numpy as np
 import numpy.linalg as la
-from scipy.sparse import csc_matrix as smatrix, linalg as sla
+from scipy.sparse import csc_matrix as smatrix
+
+from devices import *
+import simulator
 
 
 class Netlist():

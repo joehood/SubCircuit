@@ -1,8 +1,6 @@
 
 
-from pyspyce import *
-import math
-import time
+from src.pyspyce import *
 
 
 # netlist = Netlist("Series RLC")

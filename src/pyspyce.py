@@ -19,9 +19,8 @@ plot('tran', Voltage(2), Voltage(3), Current('V1'))
 
 # ============================== IMPORTS =======================================
 
-from simulator import *
-from devices import *
-from netlist import *
+from src.simulator import *
+from src.netlist import *
 
 
 # ============================== CONSTANTS ======================================

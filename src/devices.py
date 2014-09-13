@@ -1,9 +1,11 @@
 """Contains the core (atomic) SPICE circuit element definitions."""
 
-
 import math
-from interfaces import *
+
+from src.interfaces import *
 import pyspyce
+
+
 
 
 # Subcircuit Instance Device:

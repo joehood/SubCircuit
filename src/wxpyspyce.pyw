@@ -1,14 +1,12 @@
 from __future__ import print_function
-import wx
-import wx.aui
-from pyspyce import *
-from interfaces import *
-from devices import *
+import pickle
+import os
+from collections import OrderedDict as odict
+
 from simulator import *
 import gui
-import pickle
-import sys, os
-from collections import OrderedDict as odict
+
+
 
 
 # region Constants

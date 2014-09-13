@@ -1,5 +1,9 @@
-import matplotlib
 import sys
+
+import matplotlib
+
+from src import ui
+
 
 matplotlib.use('WXAgg')
 from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
@@ -7,8 +11,7 @@ from matplotlib.figure import Figure
 from wx.py.editwindow import EditWindow as PyEdit
 from wx.py.shell import Shell as PyShell
 import bdb
-import ui
-from pyspyce import *
+from src.pyspyce import *
 
 
 class Debugger(bdb.Bdb):
@@ -158,7 +161,6 @@ class MainFrame(ui.MainFrame):
 def _main_():
     """PySpyce Main Function"""
     # force this app to be the main process (above Python.exe).
-    import ctypes
 
     myappid = 'pyspyce'
     # ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
