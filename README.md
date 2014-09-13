@@ -90,3 +90,93 @@ netlist.trans(0.00002, 0.025)
 netlist.plot(Voltage(1), Voltage(2))
 ```
 
+###Custom Device Creation###
+
+Defining a device and it's schematic object is straight-forward. Here is an example (Voltage source):
+
+```python
+class VBlock(Block):
+    def __init__(self, name):
+
+        # init super:
+        Block.__init__(self, name, V)
+
+        # ports:
+        self.ports['positive'] = Port(self, 0, (50, 0))
+        self.ports['negative'] = Port(self, 1, (50, 100))
+
+        # properties:
+        self.properties['Voltage (V)'] = 1.0
+
+        # leads:
+        self.lines.append(((50, 0), (50, 25)))
+        self.lines.append(((50, 75), (50, 100)))
+
+        # plus:
+        self.lines.append(((50, 33), (50, 43)))
+        self.lines.append(((45, 38), (55, 38)))
+
+        # circle
+        self.circles.append((50, 50, 25))
+
+    def get_engine(self, nodes):
+        return V(nodes, self.properties['Voltage (V)'])
+        
+        
+        
+class V(Device, CurrentSensor):
+
+    def __init__(self, nodes, value, res=0.0, induct=0.0, **kwargs):
+    
+        Device.__init__(self, nodes, 1, **kwargs)
+
+        # determine type of value provided:
+        if isinstance(value, Stimulus):
+            self.stimulus = value
+            self.stimulus.device = self
+        elif isinstance(value, float) or isinstance(value, int):
+            self.stimulus = None
+            self.value = float(value)
+
+        self.res = res
+        self.induct = induct
+
+    def connect(self):
+        nplus, nminus = self.nodes
+        self.port2node = {0: self.get_node_index(nplus),
+                          1: self.get_node_index(nminus),
+                          2: self.create_internal("{0}_int".format(self.name))}
+
+    def start(self, dt):
+
+        self.jac[0, 2] = 1.0
+        self.jac[1, 2] = -1.0
+        self.jac[2, 0] = 1.0
+        self.jac[2, 1] = -1.0
+        self.jac[2, 2] = -(self.res + self.induct / dt)
+
+        volt = 0.0
+        if self.stimulus:
+            volt = self.stimulus.start(dt)
+        elif self.value:
+            volt = self.value
+
+        self.bequiv[2] = volt
+
+    def step(self, dt, t):
+
+        if self.stimulus:
+            volt = self.stimulus.step(dt, t)
+        else:
+            volt = self.value
+
+        if self.induct:
+            il = self.get_across_history(2)
+            volt += self.induct / dt * il
+
+        self.bequiv[2] = volt
+
+    def get_current_node(self):
+        return self.port2node[2]
+```
+
