@@ -1,5 +1,5 @@
-PySpyce
-=======
+PySpyce Circuit Simulator
+=========================
 
 Python Implementation of SPICE Circuit Simulator. 
 
