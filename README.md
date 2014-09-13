@@ -3,9 +3,11 @@ PySpyce
 
 Python Implementation of SPICE Circuit Simulator. 
 
+Requires Python 2.7, Scipy Stack and wxPython.
+
 *Note: Many devices are not yet implemented. This is currently at a proof-of-concept phase. The devices and circuits shown in these examples are all currently supported and working.*
 
-I'm looking for someone with Python and EE experience to help out developing the rest of the atomic SPICE elements, incluing alternate analysis forms (AC, DC Bias, Noise, etc)
+I'm looking for someone with Python and EE experience to help develop the rest of the atomic SPICE elements.
 
 
 ![alt text](https://github.com/josephmhood/PySpyce/blob/master/Artwork/screen_3.png "")
