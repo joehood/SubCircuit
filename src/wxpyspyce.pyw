@@ -12,24 +12,38 @@ import gui
 
 # region Constants
 
-BG_COLOR = wx.Colour(40, 120, 40)
-GRID_COLOR = wx.Colour(60, 140, 60)
-DEVICE_COLOR = wx.Colour(200, 200, 200)
+# BG_COLOR = wx.Colour(40, 120, 40)
+# GRID_COLOR = wx.Colour(60, 140, 60)
+# DEVICE_COLOR = wx.Colour(200, 200, 200)
+# SELECT_COLOR = wx.Colour(255, 255, 255)
+# HOVER_COLOR = wx.Colour(255, 255, 255)
+
+BG_COLOR = wx.Colour(0, 0, 0)
+GRID_COLOR = wx.Colour(30, 30, 30)
+DEVICE_COLOR = wx.Colour(130, 130, 130)
 SELECT_COLOR = wx.Colour(255, 255, 255)
 HOVER_COLOR = wx.Colour(255, 255, 255)
+
 LINE_WIDTH = 3
 SELECT_WIDTH = 6
 HOVER_WIDTH = 3
-GRID_SIZE = 20
+GRID_SIZE = 10
 GRID_WIDTH = 1
 SHOW_CROSSHAIR = False
 MOVE_DELTA = GRID_SIZE
 GHOST_COLOR = GRID_COLOR
 DEF_DEVICE = "R"
 FONT_SIZE = 20
+ORTHO_CONNECTORS = True
+CONNECTOR_HIT_MARGIN = 10
+PORT_HIT_MARGIN = 10
+PORT_RADIUS = 4
 
 # endregion
-
+class Orientation:
+    NONE = 0
+    VERTICAL = 1
+    HORIZONTAL = 2
 
 class SchematicObject(object):
     def __init__(self):
@@ -39,43 +53,50 @@ class SchematicObject(object):
         self.ver_flip = False
         self.scale = 1.0
         self.selected = False
-        self.bounding_rect = (0, 0, 0, 0)
         self.center = (0, 0)
         self.hover = False
         self.selected = False
+        self.bounding_rects = [(0, 0, 0, 0)]
 
     def translate(self, delta):
         x, y = self.position
         dx, dy = delta
         self.position = x + dx, y + dy
-        if self.bounding_rect:
-            x, y, w, h = self.bounding_rect
-            self.bounding_rect = (x + dx, y + dx, w, h)
+        if self.bounding_rects:
+            for i, (x, y, w, h) in enumerate(self.bounding_rects):
+                self.bounding_rects[i] = (x + dx, y + dx, w, h)
 
     def rotate(self, angle):
         self.rotation += angle
 
     def hittest(self, point):
         x, y = point
-        x1, y1, w, h = self.bounding_rect
-        x2 = x1 + w
-        y2 = y1 + h
-        if x1 < x < x2 and y1 < y < y2:
-            return True
-        else:
-            return False
+        hit = False
+        for rect in self.bounding_rects:
+            x1, y1, w, h = rect
+            x2 = x1 + w
+            y2 = y1 + h
+            if x1 < x < x2 and y1 < y < y2:
+                hit = True
+                break
+        return hit
 
 
-class Port(SchematicObject):
-    def __init__(self, block, index, position, is_ground=False):
+class ConnectionPoint(SchematicObject):
+    def __init__(self):
         SchematicObject.__init__(self)
+
+
+class Port(ConnectionPoint):
+    def __init__(self, block, index, position, is_ground=False):
+        ConnectionPoint.__init__(self)
         self.index = index
         self.node = None
         self.position = position
-        self.connectors = {}
+        self.connectors = []
         self.block = block
-        self.radius = 4
-        self.hit_margin = 4
+        self.radius = PORT_RADIUS
+        self.hit_margin = PORT_HIT_MARGIN
         self.connected = False
         self.is_ground = is_ground
 
@@ -86,28 +107,37 @@ class Port(SchematicObject):
         return str(self)
 
 
-class Joint(SchematicObject):
+class Joint(ConnectionPoint):
     def __init__(self):
-        SchematicObject.__init__(self)
+        ConnectionPoint.__init__(self)
         self.port = None
         self.segment = None
-        self.location = 0
+        self.connector = None
+        self.fixed = False
+
+
+class Segment(SchematicObject):
+    def __init__(self):
+        SchematicObject.__init__(self)
+        self.joints = []
+        self.line = (0, 0, 0, 0)
+        self.orientation = Orientation.NONE
 
 
 class Connector(SchematicObject):
     def __init__(self, start):
         SchematicObject.__init__(self)
 
-        self.sandbox = None
         self.start = start
         self.end = start
         self.partial = True
         self.knees = []
-        self.hover = False
-        self.selected = False
         self.ports = []
-        self.end_port = None
-        self.start_port = None
+        self.joints = []
+        self.end_connection_point = None
+        self.start_connection_point = None
+        self.segments = []
+
 
     def add_port(self, port):
         self.ports.append(port)
@@ -365,11 +395,11 @@ class VScopeBlock(Block):
         # init super:
         Block.__init__(self, name, None, is_signal_device=True)
         self.size = (200, 100)
-        self.margin = 10
+        self.margin = 12
 
         # port:
-        self.ports['positive'] = Port(self, 0, (0, 40))
-        self.ports['negative'] = Port(self, 1, (0, 60))
+        self.ports['positive'] = Port(self, 0, (0, 50))
+        self.ports['negative'] = Port(self, 1, (100, 100))
 
         # rects:
         (w, h), m = self.size, self.margin
@@ -385,42 +415,103 @@ class VScopeBlock(Block):
         stride = int(n / npoints)
         stride = max(stride, 2)
 
-        self.size = (200, 100)
-        self.margin = 10
-
         (w, h), m = self.size, self.margin
 
-        tscale = (w - m * 2.0) / max(times)
-        toffset = m
+        if max(times) > 0.0:
+            tscale = (w - m * 2.0) / max(times)
+            toffset = m
 
-        range_ = max(values) - min(values)
+            range_ = max(values) - min(values)
 
-        mid = min(values) + range_ * 0.5
+            mid = min(values) + range_ * 0.5
 
-        vscale = -(h - m * 4.0) / range_
+            vscale = 1.0
+            if range_ > 0.0:
+                vscale = -(h - m * 4.0) / range_
 
-        voffset = -(mid * vscale - m * 5)
+            self.margin = 12
 
-        # path:
-        plot_curve = []
-        for t, v in zip(times[::stride], values[::stride]):
-            plot_curve.append((t * tscale + toffset, v * vscale + voffset))
+            voffset = -(mid * vscale - m * 4)
 
-        self.plot_curves = []
-        self.plot_curves.append(plot_curve)
+            # path:
+            plot_curve = []
+            for t, v in zip(times[::stride], values[::stride]):
+                plot_curve.append((t * tscale + toffset, v * vscale + voffset))
 
-        window = (m, m), (w - m, m), (w - m, h - m), (m, h - m), (m, m)
-        self.plot_curves.append(window)
+            self.plot_curves = []
+            self.plot_curves.append(plot_curve)
+
+            window = (m, m), (w - m, m), (w - m, h - m), (m, h - m), (m, m)
+            self.plot_curves.append(window)
 
     def get_engine(self, nodes):
         self.engine = VScope(nodes)
         return self.engine
 
 
+class IScopeBlock(Block):
+    def __init__(self, name):
+        # init super:
+        Block.__init__(self, name, None)
+        self.size = (200, 120)
+        self.margin = 12
+
+        # port:
+        self.ports['positive'] = Port(self, 0, (50, 120))
+        self.ports['negative'] = Port(self, 1, (150, 120))
+
+        # rects:
+        (w, h), m = self.size, self.margin
+        self.rects.append((0, 0, w, h, 5))
+
+    def end(self):
+        times = self.engine.time
+        values = self.engine.data
+
+        n = len(times)
+
+        npoints = 1000
+        stride = int(n / npoints)
+        stride = max(stride, 2)
+
+        (w, h), m = self.size, self.margin
+
+        if max(times) > 0.0:
+            tscale = (w - m * 2.0) / max(times)
+            toffset = m
+
+            range_ = max(values) - min(values)
+
+            mid = min(values) + range_ * 0.5
+
+            iscale = 1.0
+            if range_ > 0.0:
+                iscale = -(h - m * 4.0) / range_
+
+            self.margin = 12
+
+            ioffset = -(mid * iscale - m * 5)
+
+            # path:
+            plot_curve = []
+            for t, i in zip(times[::stride], values[::stride]):
+                plot_curve.append((t * tscale + toffset, i * iscale + ioffset))
+
+            self.plot_curves = []
+            self.plot_curves.append(plot_curve)
+
+            window = (m, m), (w - m, m), (w - m, h - m), (m, h - m), (m, m)
+            self.plot_curves.append(window)
+
+    def get_engine(self, nodes):
+        self.engine = IScope(nodes)
+        return self.engine
+
+
 # device type name to class mapping:
 DEVICELIB = dict(R=RBlock, C=CBlock, L=LBlock, V=VBlock,
                  VSin=VSinBlock, D=DBlock, GND=GndBlock,
-                 VScope=VScopeBlock)
+                 VScope=VScopeBlock, IScope=IScopeBlock)
 
 
 class Mode(object):
@@ -430,6 +521,7 @@ class Mode(object):
     MOVE = 3
     EDIT = 4
     ADD_DEVICE = 5
+    ADD_JOINT = 6
 
 
 class PropertyDialog(gui.PropertyDialog):
@@ -556,6 +648,8 @@ class SchematicWindow(wx.Panel):
 
         # connection management:
         self.active_connector = None
+        self.active_joint = None
+        self.active_joint_conn = None
 
         # solution management:
         self.netlist = None
@@ -632,6 +726,7 @@ class SchematicWindow(wx.Panel):
             port_hit = False
             block_hit = False
             field_hit = False
+            connector_hit = False
             for name, block in self.blocks.items():
                 for name, field in block.fields.items():
                     if field.hittest(pt):
@@ -655,7 +750,8 @@ class SchematicWindow(wx.Panel):
                         port_pt = port.center
                         connector = Connector(port_pt)
                         connector.add_port(port)
-                        connector.start_port = port
+                        port.connectors.append(connector)
+                        connector.start_connection_point = port
                         self.connectors.append(connector)
                         self.active_connector = connector
                     else:
@@ -672,7 +768,33 @@ class SchematicWindow(wx.Panel):
                         self.selected_objects.append(block)
                 elif not (ctrl or shft):
                     block.selected = False
-            if not (port_hit or block_hit or field_hit):
+
+            for connector in self.connectors:
+                if (connector.hittest(pt) and not block_hit
+                                          and not port_hit
+                                          and not field_hit):
+                    connector.selected = True
+                    connector_hit = True
+                    if not (ctrl or shft):
+                        self.selected_objects = []
+                    self.selected_objects.append(connector)
+                    self.mode = Mode.ADD_JOINT
+                    self.active_joint = Joint()
+                    for segment in connector.segments:
+                        if segment.hittest(pt):
+                            x1, y1, x2, y2 = segment.line
+                            xs, ys = self.snap(pt)
+                            if x1 == x2:
+                                self.active_joint.position = x1, ys
+                            else:
+                                self.active_joint.position = xs, y1
+                    self.active_joint_conn = connector
+                    connector.joints.append(self.active_joint)
+
+                elif not (ctrl or shft):
+                    connector.selected = False
+
+            if not (port_hit or block_hit or field_hit or connector_hit):
                 self.deselect_all()
 
         elif self.mode == Mode.CONNECT:
@@ -681,39 +803,62 @@ class SchematicWindow(wx.Panel):
                 for name, port in block.ports.items():
                     if port.hittest(pt):
                         port_hit = True
-                        port.selected = True
+                        port.selected = False
+                        port.connectors.append(self.active_connector)
+                        self.active_connector.start_connection_point.selected = False
                         self.mode = Mode.STANDBY
                         port_pt = port.center
                         self.active_connector.end = port_pt
                         self.active_connector.add_port(port)
-                        self.active_connector.end_port = port
+                        self.active_connector.end_connection_point = port
                         self.active_connector = None
-                    else:
-                        port.selected = False
             if not port_hit:
                 self.active_connector.add_knee(pt)
 
         elif self.mode == Mode.ADD_DEVICE:
             pass
 
+        elif self.mode == Mode.ADD_JOINT:
+            if self.active_joint_conn.hittest(pt):
+                pt2 = pt
+                for segment in self.active_joint_conn.segments:
+                    if segment.hittest(pt):
+                        x1, y1, x2, y2 = segment.line
+                        xs, ys = self.snap(pt)
+                        if x1 == x2:
+                            self.active_joint.position = x1, ys
+                            pt2 = x1, ys
+                        else:
+                            self.active_joint.position = xs, y1
+                            pt2 = xs, y1
+                        break
+
+                connector = Connector(pt2)
+                connector.end = pt2
+                self.connectors.append(connector)
+                connector.start_connection_point = self.active_joint
+                connector.joints.append(self.active_joint)
+                connector.hover = True
+                self.active_connector = connector
+
+                self.active_joint.fixed = True
+                self.active_joint_conn.selected = False
+                self.active_joint_conn = None
+                self.active_joint.selected = True
+                self.active_joint = None
+
+                self.mode = Mode.CONNECT
+
         self.Refresh()
 
     def on_motion(self, event):
         self.update_position(event)
+        pt = self.x, self.y
         drag = event.Dragging()
         left = event.LeftIsDown()
 
-        if drag:
-            self.drug = True
-
         if self.mode == Mode.ADD_DEVICE:
-            dx_object = (event.x - self.x0_object) / self.scale
-            dy_object = (event.y - self.y0_object) / self.scale
-            self.x0_object = event.x
-            self.y0_object = event.y
-
-            assert self.ghost is not None
-            self.ghost.translate((dx_object, dy_object))
+            self.ghost.position = self.snap(pt)
 
         else:
             if drag and left:
@@ -729,32 +874,92 @@ class SchematicWindow(wx.Panel):
                     self.dy += (event.y - self.y0)
                     self.x0 = event.x
                     self.y0 = event.y
-                self.Refresh()
-            else:  # moving but not dragging:
-                port_hit = False
-                block_hit = False
-                field_hit = False
-                pt = self.x, self.y
-                for block in self.blocks.values():
-                    for name, field in block.fields.items():
-                        if field.hittest(pt):
-                            field.hover = True
-                            field_hit = True
-                        else:
-                            field.hover = False
-                    for port in block.ports.values():
-                        if port.hittest(pt) and not field_hit:
-                            port.hover = True
-                            port_hit = True
-                        else:
-                            port.hover = False
-                    if block.hittest(pt) and not port_hit and not field_hit:
-                        block.hover = True
-                        block_hit = True
+
+            else:  # moving but not dragging (hovering):
+                if self.mode == Mode.ADD_JOINT:
+                    if self.active_joint_conn.hittest(pt):
+                        for segment in self.active_joint_conn.segments:
+                            if segment.hittest(pt):
+                                x1, y1, x2, y2 = segment.line
+                                xs, ys = self.snap(pt)
+                                if x1 == x2:
+                                    self.active_joint.position = x1, ys
+                                else:
+                                    self.active_joint.position = xs, y1
+
                     else:
-                        block.hover = False
-                if self.mode == Mode.CONNECT:
-                    self.active_connector.end = pt
+                        self.active_joint_conn.joints.remove(self.active_joint)
+                        self.active_joint_conn = None
+                        self.active_joint = None
+                        self.mode = Mode.STANDBY
+                else:
+                    if self.mode == Mode.CONNECT:
+                        port_hit = False
+                        for block in self.blocks.values():
+                            for port in block.ports.values():
+                                if port.hittest(pt):
+                                    port.hover = True
+                                    port_hit = True
+                                else:
+                                    port.hover = False
+                        self.active_connector.end = self.snap(pt)
+
+                    else:
+                        port_hit = False
+                        conn_hit = False
+                        block_hit = False
+                        field_hit = False
+                        for block in self.blocks.values():
+                            for name, field in block.fields.items():
+                                if field.hittest(pt):
+                                    field.hover = True
+                                    field_hit = True
+                                else:
+                                    field.hover = False
+                            for port in block.ports.values():
+                                if port.hittest(pt) and not field_hit:
+                                    port.hover = True
+                                    port_hit = True
+                                else:
+                                    port.hover = False
+                            if (block.hittest(pt) and not port_hit
+                                    and not field_hit):
+                                block.hover = True
+                                block_hit = True
+                            else:
+                                block.hover = False
+
+                        for connector in self.connectors:
+                            if (connector.hittest(pt) and not block_hit
+                                                      and not port_hit
+                                                      and not field_hit):
+                                conn_hit = True
+
+                                if connector.selected:
+                                    if not self.mode == Mode.ADD_JOINT:
+                                        self.mode = Mode.ADD_JOINT
+                                        self.active_joint = Joint()
+                                        self.active_joint_conn = connector
+                                        connector.joints.append(self.active_joint)
+                                    for segment in connector.segments:
+                                        if segment.hittest(pt):
+                                            x1, y1, x2, y2 = segment.line
+                                            xs, ys = self.snap(pt)
+                                            if x1 == x2:
+                                                self.active_joint.position = x1, ys
+                                            else:
+                                                self.active_joint.position = xs, y1
+
+                                else:
+                                    connector.hover = True
+                            else:
+                                connector.hover = False
+
+                        if not conn_hit and self.mode == Mode.ADD_JOINT:
+                            self.mode = Mode.STANDBY
+
+
+
         self.Refresh()
 
     def on_scroll(self, event):
@@ -775,7 +980,7 @@ class SchematicWindow(wx.Panel):
                 self.mode = Mode.STANDBY
             self.deselect_all()
 
-        elif code == wx.WXK_DELETE:
+        elif code == wx.WXK_DELETE or code == wx.WXK_BACK:
             for obj in self.selected_objects:
                 if isinstance(obj, Block):
                     to_del = None
@@ -784,6 +989,12 @@ class SchematicWindow(wx.Panel):
                             to_del = name
                     if to_del:
                         del self.blocks[to_del]
+                elif isinstance(obj, Connector):
+                    self.connectors.remove(obj)
+                    for block in self.blocks.values():
+                        for port in block.ports.values():
+                            if obj in port.connectors:
+                                port.connectors.remove(obj)
 
         elif code == wx.WXK_UP or code == wx.WXK_NUMPAD_UP:
             for obj in self.selected_objects:
@@ -801,7 +1012,7 @@ class SchematicWindow(wx.Panel):
             for obj in self.selected_objects:
                 obj.translate((MOVE_DELTA, 0))
 
-        elif chr(code) == 'R':
+        elif code == ord('R'):
             if self.mode == Mode.ADD_DEVICE:
                 self.ghost.rotate(90)
 
@@ -836,6 +1047,21 @@ class SchematicWindow(wx.Panel):
         center = rect.GetCentre()
         return bounding, center
 
+    def snap(self, position):
+        x, y = position
+        dx = x % GRID_SIZE
+        dy = y % GRID_SIZE
+        if dx > GRID_SIZE:
+            x += dx - GRID_SIZE
+        else:
+            x -= dx
+        if dy > GRID_SIZE:
+            y += dy - GRID_SIZE
+        else:
+            y -= dy
+
+        return x, y
+
     def render_block(self, block, gc):
 
         font = wx.Font(FONT_SIZE, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL,
@@ -857,7 +1083,7 @@ class SchematicWindow(wx.Panel):
             gc.SetPen(self.pen)
             gc.SetBrush(self.brush)
 
-        x, y = block.position
+        x, y = self.snap(block.position)
         rad = block.rotation * 0.0174532925
         matrix = gc.CreateMatrix()
         matrix.Translate(x, y)
@@ -877,11 +1103,11 @@ class SchematicWindow(wx.Panel):
             path.AddCircle(*circle)
 
         for arc in block.arcs:
-            x, y, r, a1, a2, clk = arc
-            x0 = x + r * math.cos(a1)
-            y0 = y + r * math.sin(a1)
+            x, y, r, ang1, ang2, clockwise = arc
+            x0 = x + r * math.cos(ang1)
+            y0 = y + r * math.sin(ang2)
             path.MoveToPoint((x0, y0))
-            path.AddArc(x, y, r, a1, a2, clk)
+            path.AddArc(x, y, r, ang1, ang2, clockwise)
 
         path.Transform(matrix)
         gc.StrokePath(path)
@@ -898,7 +1124,7 @@ class SchematicWindow(wx.Panel):
             path2.Transform(matrix)
             gc.StrokePath(path2)
 
-        block.bounding_rect, block.center = self.get_bounding(path)
+        block.bounding_rects[0], block.center = self.get_bounding(path)
 
         for key, field in block.fields.items():
 
@@ -916,40 +1142,67 @@ class SchematicWindow(wx.Panel):
 
             gc.SetFont(gf)
 
-            x, y, w, h = block.bounding_rect
+            x, y, w, h = block.bounding_rects[0]
             xo, yo = field.position
             xt, yt = x + xo, y + yo
             gc.DrawText(field.text, xt, yt)
             w, h, d, e = gc.GetFullTextExtent(field.text)
-            field.bounding_rect = (xt, yt, w, h)
+            field.bounding_rects[0] = (xt, yt, w, h)
             field.center = (xt + w * 0.5, yt + h * 0.5)
 
         for name, port in block.ports.items():
+
+            force_show = False
 
             if block.is_ghost:
                 gc.SetPen(self.pen_ghost)
                 gc.SetBrush(self.brush_ghost)
                 gf = gc.CreateFont(font, GHOST_COLOR)
+                force_show = True
 
             elif block.selected:
                 gc.SetPen(self.pen_select)
                 gc.SetBrush(self.brush_select)
                 gf = gc.CreateFont(font, SELECT_COLOR)
+                force_show = True
 
             elif port.selected:
                 gc.SetPen(self.pen)
                 gc.SetBrush(self.brush)
                 gf = gc.CreateFont(font, DEVICE_COLOR)
+                force_show = True
 
-            elif port.hover or block.hover:
+            elif port.hover:
+                gc.SetPen(self.pen_select)
+                gc.SetBrush(self.brush_select)
+                gf = gc.CreateFont(font, HOVER_COLOR)
+                force_show = True
+
+            elif block.hover:
                 gc.SetPen(self.pen_hover)
                 gc.SetBrush(self.brush_hover)
                 gf = gc.CreateFont(font, HOVER_COLOR)
+                force_show = True
 
             else:
                 gc.SetPen(self.pen)
                 gc.SetBrush(self.brush)
                 gf = gc.CreateFont(font, DEVICE_COLOR)
+                force_show = False
+
+            for connector in port.connectors:
+                if connector.selected:
+                    gc.SetPen(self.pen_select)
+                    gc.SetBrush(self.brush_select)
+                    gf = gc.CreateFont(font, SELECT_COLOR)
+                    force_show = True
+
+                elif connector.hover:
+                    gc.SetPen(self.pen_hover)
+                    gc.SetBrush(self.brush_hover)
+                    gf = gc.CreateFont(font, HOVER_COLOR)
+                    force_show = True
+
 
             gc.SetFont(gf)
 
@@ -958,18 +1211,21 @@ class SchematicWindow(wx.Panel):
             path.MoveToPoint(x, y)
             path.AddCircle(x, y, r)
             path.Transform(matrix)
-            gc.StrokePath(path)
-            gc.FillPath(path)
+
+            if len(port.connectors) > 1 or force_show:
+                gc.StrokePath(path)
+                gc.FillPath(path)
+
             path = gc.CreatePath()
             path.AddRectangle(x - r - m, y - r - m, (r + m) * 2, (r + m) * 2)
             path.Transform(matrix)
-            port.bounding_rect, port.center = self.get_bounding(path)
+            port.bounding_rects[0], port.center = self.get_bounding(path)
 
     def render_connector(self, connector, gc):
 
-        connector.start = connector.start_port.center
-        if connector.end_port:
-            connector.end = connector.end_port.center
+        connector.start = connector.start_connection_point.center
+        if connector.end_connection_point:
+            connector.end = connector.end_connection_point.center
 
         if connector.selected:
             gc.SetPen(self.pen_select)
@@ -982,16 +1238,74 @@ class SchematicWindow(wx.Panel):
             gc.SetBrush(self.brush)
 
         path = gc.CreatePath()
+        points = []
 
         path.MoveToPoint(connector.start)
+        points.append(connector.start)
 
-        for knee in connector.knees:
-            x2, y2 = knee
-            path.AddLineToPoint(x2, y2)
+        if ORTHO_CONNECTORS:
+            x1, y1 = connector.start
+            for knee in connector.knees:
+                x2, y2 = self.snap(knee)
+
+                path.AddLineToPoint(x1, y2)
+                points.append((x1, y2))
+
+                path.AddLineToPoint(x2, y2)
+                points.append((x2, y2))
+
+                x1, y1 = x2, y2
+
+            x2, y2 = connector.end
+            path.AddLineToPoint(x1, y2)
+            points.append((x1, y2))
+
+        else:
+            for knee in connector.knees:
+                x2, y2 = self.snap(knee)
+                path.AddLineToPoint(x2, y2)
+                points.append((x2, y2))
 
         path.AddLineToPoint(connector.end)
+        points.append(connector.end)
 
         gc.StrokePath(path)
+
+        connector.bounding_rects = []
+        connector.segments = []
+
+        if points:
+            m = CONNECTOR_HIT_MARGIN
+            x1, y1 = points[0]
+            for x2, y2 in points[1:]:
+                x, y = min(x1, x2), min(y1, y2)
+                w, h = max(x1, x2) - x, max(y1, y2) - y
+                box = x - m, y - m, w + m * 2, h + m * 2
+
+                segments = Segment()
+                segments.line = (x1, y1, x2, y2)
+                segments.bounding_rects[0] = box
+
+                if x1 == x2:
+                    segments.orientation = Orientation.VERTICAL
+                else:
+                    segments.orientation = Orientation.HORIZONTAL
+
+                connector.segments.append(segments)
+                connector.bounding_rects.append(box)
+
+                x1, y1 = x2, y2
+
+        # draw joints:
+        path = gc.CreatePath()
+        for joint in connector.joints:
+            (x, y), r, m = joint.position, PORT_RADIUS, PORT_HIT_MARGIN
+            path.MoveToPoint(x, y)
+            path.AddCircle(x, y, r)
+            joint.bounding_rects[0] = (x-r-m, y-r-m, (r+m)*2, (r+m)*2)
+            joint.center = (x, y)
+        gc.StrokePath(path)
+        gc.FillPath(path)
 
     def draw(self, event):
 
@@ -1028,8 +1342,8 @@ class SchematicWindow(wx.Panel):
         groups = [[], ]
 
         for connector in self.connectors:
-            start = connector.start_port
-            end = connector.end_port
+            start = connector.start_connection_point
+            end = connector.end_connection_point
 
             istart = -1
             iend = -1
@@ -1113,7 +1427,7 @@ class MainFrame(gui.MainFrame):
             name = MainFrame.DEF_NAME.format(self.schcnt)
         sch = Schematic(name)
         schem = SchematicWindow(frame.ntb_main, sch)
-        self.ntb_main.AddPage(schem, name)
+        self.ntb_main.AddPage(schem, name, select=True)
         self.schcnt += 1
         self.schematics[name] = schem
         self.active_schem = schem
@@ -1171,6 +1485,8 @@ class MainFrame(gui.MainFrame):
             chans.append(Current(i.strip()))
 
         netlist.plot(*chans)
+
+        self.active_schem.Refresh()
 
     def add_gadget(self, type_):
         if self.active_schem:
@@ -1255,6 +1571,9 @@ class MainFrame(gui.MainFrame):
     def on_add_vscope(self, event):
         self.add_gadget("VScope")
 
+    def on_add_iscope(self, event):
+        self.add_gadget("IScope")
+
     def on_setup(self, event):
         self.active_schem.sim_settings = update_properties(self,
                                                            self.active_schem.sim_settings)
@@ -1273,10 +1592,10 @@ if __name__ == '__main__':
     frame = MainFrame()
     frame.SetSize((800, 600))
     frame.SetPosition((100, 100))
-    # frame.new_schem()
+    frame.new_schem()
 
-    frame.open_schematic("/Users/josephmhood/Documents/Cir1.sch")
-    # frame.run()
+    #frame.open_schematic("/Users/josephmhood/Documents/Cir1.sch")
+    #frame.run()
 
     frame.Show()
     app.MainLoop()

@@ -832,11 +832,9 @@ class Z(MNADevice):
 
 class VScope(SignalDevice):
     def __init__(self, nodes, **parameters):
-        SignalDevice.__init__(self, nodes, 0, **parameters)
+        SignalDevice.__init__(self, nodes, **parameters)
         self.time = []
         self.data = []
-        self.nodes = nodes
-        self.i = 0
         
     def connect(self):
         npos, nneg = self.nodes
@@ -857,6 +855,34 @@ class VScope(SignalDevice):
         v = self.get_across(0, 1)
         self.time.append(t)
         self.data.append(v)
+
+
+class IScope(MNADevice, CurrentSensor):
+
+    def __init__(self, nodes, **parameters):
+        MNADevice.__init__(self, nodes, 1, **parameters)
+        self.time = []
+        self.data = []
+
+    def connect(self):
+        nplus, nminus = self.nodes
+        self.port2node = {0: self.get_node_index(nplus),
+                          1: self.get_node_index(nminus),
+                          2: self.create_internal("{0}_int".format(self.name))}
+
+    def start(self, dt):
+        self.jac[0, 2] = 1.0
+        self.jac[1, 2] = -1.0
+        self.jac[2, 0] = 1.0
+        self.jac[2, 1] = -1.0
+
+    def step(self, dt, t):
+        i = self.get_across(2)
+        self.time.append(t)
+        self.data.append(i)
+
+    def get_current_node(self):
+        return self.port2node[2], -1.0
 
 
 # Models:

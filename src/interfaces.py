@@ -144,6 +144,7 @@ class MNADevice(Device):
         :return: None
         """
         Device.__init__(self, nodes, **parameters)
+        self.nodes = nodes
         self.nnodes = len(nodes) + internals
         self.jac = numpy.zeros((self.nnodes, self.nnodes))
         self.bequiv = numpy.zeros((self.nnodes, 1))
@@ -162,7 +163,7 @@ class MNADevice(Device):
 
 
 class SignalDevice(Device):
-    def __init__(self, name, nodes, **parameters):
+    def __init__(self, nodes, **parameters):
         Device.__init__(self, nodes, **parameters)
 
 
