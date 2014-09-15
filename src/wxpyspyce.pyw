@@ -27,7 +27,7 @@ HOVER_COLOR = wx.Colour(255, 255, 255)
 LINE_WIDTH = 3
 SELECT_WIDTH = 6
 HOVER_WIDTH = 3
-GRID_SIZE = 10
+GRID_SIZE = 20
 GRID_WIDTH = 1
 SHOW_CROSSHAIR = False
 MOVE_DELTA = GRID_SIZE
@@ -40,10 +40,13 @@ PORT_HIT_MARGIN = 10
 PORT_RADIUS = 4
 
 # endregion
+
+
 class Orientation:
     NONE = 0
     VERTICAL = 1
     HORIZONTAL = 2
+
 
 class SchematicObject(object):
     def __init__(self):
@@ -207,15 +210,15 @@ class RBlock(Block):
         Block.__init__(self, name, R)
 
         # ports:
-        self.ports['positive'] = Port(self, 0, (50, 0))
-        self.ports['negative'] = Port(self, 1, (50, 100))
+        self.ports['positive'] = Port(self, 0, (60, 0))
+        self.ports['negative'] = Port(self, 1, (60, 100))
 
         # properties:
         self.properties['Resistance (R)'] = 1.0
 
         # resistor shape:
-        self.lines.append(((50, 0), (50, 20), (35, 25), (65, 35), (35, 45),
-                           (65, 55), (35, 65), (65, 75), (50, 80), (50, 100)))
+        self.lines.append(((60, 0), (60, 20), (45, 25), (75, 35), (45, 45),
+                           (75, 55), (45, 65), (75, 75), (60, 80), (60, 100)))
 
     def get_engine(self, nodes):
         return R(nodes, self.properties['Resistance (R)'])
@@ -227,19 +230,19 @@ class CBlock(Block):
         Block.__init__(self, name, C)
 
         # ports:
-        self.ports['positive'] = Port(self, 0, (50, 0))
-        self.ports['negative'] = Port(self, 1, (50, 100))
+        self.ports['positive'] = Port(self, 0, (60, 0))
+        self.ports['negative'] = Port(self, 1, (60, 100))
 
         # properties:
         self.properties['Capacitance (F)'] = 0.1
 
         # leads:
-        self.lines.append(((50, 0), (50, 40)))
-        self.lines.append(((50, 60), (50, 100)))
+        self.lines.append(((60, 0), (60, 40)))
+        self.lines.append(((60, 60), (60, 100)))
 
         # plates:
-        self.lines.append(((30, 40), (70, 40)))
-        self.lines.append(((30, 60), (70, 60)))
+        self.lines.append(((40, 40), (80, 40)))
+        self.lines.append(((40, 60), (80, 60)))
 
     def get_engine(self, nodes):
         return C(nodes, self.properties['Capacitance (F)'])
@@ -251,22 +254,22 @@ class LBlock(Block):
         Block.__init__(self, name, L)
 
         # ports:
-        self.ports['positive'] = Port(self, 0, (50, 0))
-        self.ports['negative'] = Port(self, 1, (50, 100))
+        self.ports['positive'] = Port(self, 0, (60, 0))
+        self.ports['negative'] = Port(self, 1, (60, 100))
 
         # properties:
         self.properties['Inductance (H)'] = 0.1
 
         # leads:
-        self.lines.append(((50, 0), (50, 20)))
-        self.lines.append(((50, 80), (50, 100)))
+        self.lines.append(((60, 0), (60, 20)))
+        self.lines.append(((60, 80), (60, 100)))
 
         # coils (x, y, r, ang0, ang1, clockwise)
         ang1 = -math.pi * 0.5
         ang2 = math.pi * 0.5
-        self.arcs.append((50, 30, 10, ang1, ang2, True))
-        self.arcs.append((50, 50, 10, ang1, ang2, True))
-        self.arcs.append((50, 70, 10, ang1, ang2, True))
+        self.arcs.append((60, 30, 10, ang1, ang2, True))
+        self.arcs.append((60, 50, 10, ang1, ang2, True))
+        self.arcs.append((60, 70, 10, ang1, ang2, True))
 
     def get_engine(self, nodes):
         return L(nodes, self.properties['Inductance (H)'])
@@ -278,22 +281,22 @@ class VBlock(Block):
         Block.__init__(self, name, V)
 
         # ports:
-        self.ports['positive'] = Port(self, 0, (50, 0))
-        self.ports['negative'] = Port(self, 1, (50, 100))
+        self.ports['positive'] = Port(self, 0, (60, 0))
+        self.ports['negative'] = Port(self, 1, (60, 100))
 
         # properties:
         self.properties['Voltage (V)'] = 1.0
 
         # leads:
-        self.lines.append(((50, 0), (50, 25)))
-        self.lines.append(((50, 75), (50, 100)))
+        self.lines.append(((60, 0), (60, 25)))
+        self.lines.append(((60, 75), (60, 100)))
 
         # plus:
-        self.lines.append(((50, 33), (50, 43)))
-        self.lines.append(((45, 38), (55, 38)))
+        self.lines.append(((60, 33), (60, 43)))
+        self.lines.append(((55, 38), (65, 38)))
 
         # circle
-        self.circles.append((50, 50, 25))
+        self.circles.append((60, 50, 25))
 
     def get_engine(self, nodes):
         return V(nodes, self.properties['Voltage (V)'])
@@ -305,8 +308,8 @@ class VSinBlock(Block):
         Block.__init__(self, name, V)
 
         # ports:
-        self.ports['positive'] = Port(self, 0, (50, 0))
-        self.ports['negative'] = Port(self, 1, (50, 100))
+        self.ports['positive'] = Port(self, 0, (60, 0))
+        self.ports['negative'] = Port(self, 1, (60, 100))
 
         # properties:
         self.properties['Voltage Offset (V)'] = 0.0
@@ -317,21 +320,21 @@ class VSinBlock(Block):
         self.properties['Phase (rad)'] = 0.0
 
         # leads:
-        self.lines.append(((50, 0), (50, 25)))
-        self.lines.append(((50, 75), (50, 100)))
+        self.lines.append(((60, 0), (60, 25)))
+        self.lines.append(((60, 75), (60, 100)))
 
         # plus:
-        self.lines.append(((50, 33), (50, 43)))
-        self.lines.append(((45, 38), (55, 38)))
+        self.lines.append(((60, 33), (60, 43)))
+        self.lines.append(((55, 38), (65, 38)))
 
         # circle
-        self.circles.append((50, 50, 25))
+        self.circles.append((60, 50, 25))
 
         # sine:
         a1 = math.pi * 1.0
         a2 = math.pi * 0.0
-        self.arcs.append((43, 58, 7, a1, a2, True))
-        self.arcs.append((57, 58, 7, -a1, -a2, False))
+        self.arcs.append((53, 58, 7, a1, a2, True))
+        self.arcs.append((67, 58, 7, -a1, -a2, False))
 
     def get_engine(self, nodes):
         vo = self.properties['Voltage Offset (V)']
@@ -350,20 +353,20 @@ class DBlock(Block):
         Block.__init__(self, name, D)
 
         # ports:
-        self.ports['anode'] = Port(self, 0, (50, 100))
-        self.ports['cathode'] = Port(self, 1, (50, 0))
+        self.ports['anode'] = Port(self, 0, (60, 100))
+        self.ports['cathode'] = Port(self, 1, (60, 0))
 
         # properties:
         self.properties['Isat (I)'] = 1.0E-9
         self.properties['Vt (V)'] = 25.85e-3
 
         # leads:
-        self.lines.append(((50, 0), (50, 37)))
-        self.lines.append(((50, 63), (50, 100)))
+        self.lines.append(((60, 0), (50, 37)))
+        self.lines.append(((60, 63), (50, 100)))
 
         # diode symbol:
-        self.lines.append(((50, 37), (32, 63), (68, 63), (50, 37)))
-        self.lines.append(((32, 37), (68, 37)))
+        self.lines.append(((60, 37), (42, 63), (78, 63), (60, 37)))
+        self.lines.append(((42, 37), (78, 37)))
 
 
     def get_engine(self, nodes):
@@ -376,15 +379,15 @@ class GndBlock(Block):
         Block.__init__(self, name, None, is_ground=True)
 
         # port:
-        self.ports['ground'] = Port(self, 0, (50, 0), is_ground=True)
+        self.ports['ground'] = Port(self, 0, (60, 0), is_ground=True)
 
         # lead:
-        self.lines.append(((50, 0), (50, 15)))
+        self.lines.append(((60, 0), (60, 15)))
 
         # ground lines:
-        self.lines.append(((35, 15), (65, 15)))
-        self.lines.append(((42, 24), (58, 24)))
-        self.lines.append(((48, 33), (52, 33)))
+        self.lines.append(((45, 15), (75, 15)))
+        self.lines.append(((52, 24), (68, 24)))
+        self.lines.append(((58, 33), (62, 33)))
 
     def get_engine(self, nodes):
         raise Exception("GND Block has no engine.")
@@ -394,12 +397,12 @@ class VScopeBlock(Block):
     def __init__(self, name):
         # init super:
         Block.__init__(self, name, None, is_signal_device=True)
-        self.size = (200, 100)
+        self.size = (180, 120)
         self.margin = 12
 
         # port:
-        self.ports['positive'] = Port(self, 0, (0, 50))
-        self.ports['negative'] = Port(self, 1, (100, 100))
+        self.ports['positive'] = Port(self, 0, (0, 60))
+        self.ports['negative'] = Port(self, 1, (90, 120))
 
         # rects:
         (w, h), m = self.size, self.margin
@@ -453,12 +456,12 @@ class IScopeBlock(Block):
     def __init__(self, name):
         # init super:
         Block.__init__(self, name, None)
-        self.size = (200, 120)
+        self.size = (180, 120)
         self.margin = 12
 
         # port:
-        self.ports['positive'] = Port(self, 0, (50, 120))
-        self.ports['negative'] = Port(self, 1, (150, 120))
+        self.ports['positive'] = Port(self, 0, (70, 120))
+        self.ports['negative'] = Port(self, 1, (110, 120))
 
         # rects:
         (w, h), m = self.size, self.margin
@@ -599,7 +602,7 @@ class SchematicWindow(wx.Panel):
         self.SetBackgroundColour(BG_COLOR)
 
         # bindings:
-        self.Bind(wx.EVT_PAINT, self.draw)
+        self.Bind(wx.EVT_PAINT, self.on_paint)
         self.Bind(wx.EVT_LEFT_DOWN, self.on_left_down)
         self.Bind(wx.EVT_MOTION, self.on_motion)
         self.Bind(wx.EVT_MOUSEWHEEL, self.on_scroll)
@@ -607,10 +610,7 @@ class SchematicWindow(wx.Panel):
         self.Bind(wx.EVT_KEY_UP, self.on_key_up)
         self.Bind(wx.EVT_LEFT_UP, self.on_left_up)
         self.Bind(wx.EVT_LEFT_DCLICK, self.on_dclick)
-
-        # drawing context:
-        self.gc = None
-        self.dc = None
+        self.Bind(wx.EVT_SIZE, self.on_size)
 
         # mouse movement management:
         self.drug = False
@@ -653,6 +653,13 @@ class SchematicWindow(wx.Panel):
 
         # solution management:
         self.netlist = None
+
+        # drawing:
+        self.SetDoubleBuffered(True)
+        self.gc = None
+
+    def on_size(self, event):
+        pass
 
     def update_position(self, event):
         self.x, self.y = event.GetLogicalPosition(self.dc)
@@ -1307,10 +1314,7 @@ class SchematicWindow(wx.Panel):
         gc.StrokePath(path)
         gc.FillPath(path)
 
-    def draw(self, event):
-
-        # get context:
-        self.dc = wx.PaintDC(self)
+    def draw(self, dc):
         w, h = self.dc.GetSize()
         gc = wx.GraphicsContext.Create(self.dc)
 
@@ -1336,6 +1340,10 @@ class SchematicWindow(wx.Panel):
 
         for name, block in self.blocks.items():
             self.render_block(block, gc)
+
+    def on_paint(self, event):
+        self.dc = wx.PaintDC(self)
+        self.draw(self.dc)
 
     def build_netlist(self):
 

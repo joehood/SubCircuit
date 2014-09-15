@@ -130,7 +130,7 @@ class Simulator():
             if p1 - p0 >= step:
                 p0 = p1
                 s = "time:{0:8.4g}s percent:{1:3.0f} min itr: {2}  max itr: {3}"
-                s = s.format(self.t, p1*100, min(itr), max(itr))
+                s = s.format(self.t, p1 * 100, min(itr), max(itr))
                 itr = []
                 print(s)
 
@@ -199,7 +199,7 @@ class Simulator():
             plot_panel = editor.PlotPanel(notebook)
             notebook.AddPage(plot_panel, 'Plot', True)
             plot_panel.set_data(curves)
-            plot_panel.draw()
+            plot_panel.on_paint()
 
         else:
             plt.figure()
