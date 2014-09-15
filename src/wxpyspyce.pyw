@@ -1,12 +1,13 @@
-from __future__ import print_function
+from __future__ import print_function, division
 import pickle
 import os
-from collections import OrderedDict as odict
+from collections import OrderedDict as ODict
 
-from simulator import *
+import wx
+
+from pyspyce import *
+from interfaces import *
 import gui
-
-
 
 
 # region Constants
@@ -134,25 +135,34 @@ class BlockField(SchematicObject):
 
 
 class Block(SchematicObject):
-    def __init__(self, name, engine, is_ground=False):
+    def __init__(self, name, engine=None, is_ground=False,
+                 is_signal_device=True):
         SchematicObject.__init__(self)
         self.name = name
+        self.is_circuit_element = is_signal_device
         self.is_ghost = False
         self.is_ground = is_ground
         self.engine = engine
 
-        self.ports = odict()
-        self.properties = odict()
-        self.outputs = odict()
+        self.ports = ODict()
+        self.properties = ODict()
+        self.outputs = ODict()
         self.lines = []
+        self.plot_curves = []
+        self.rects = []
         self.circles = []
         self.arcs = []
-        self.fields = odict()
+        self.fields = ODict()
+
+        self.nominal_size = (100, 100)
 
         self.fields['name'] = BlockField('name', name)
 
     def get_engine(self, nodes):
         raise NotImplementedError()
+
+    def end(self):
+        pass
 
     def __str__(self):
         return self.name
@@ -163,7 +173,6 @@ class Block(SchematicObject):
 
 class RBlock(Block):
     def __init__(self, name):
-
         # init super:
         Block.__init__(self, name, R)
 
@@ -175,8 +184,8 @@ class RBlock(Block):
         self.properties['Resistance (R)'] = 1.0
 
         # resistor shape:
-        self.lines.append(((50, 0),(50, 20),(35, 25),(65, 35),(35, 45),
-                           (65, 55),(35, 65),(65, 75),(50, 80),(50, 100)))
+        self.lines.append(((50, 0), (50, 20), (35, 25), (65, 35), (35, 45),
+                           (65, 55), (35, 65), (65, 75), (50, 80), (50, 100)))
 
     def get_engine(self, nodes):
         return R(nodes, self.properties['Resistance (R)'])
@@ -184,7 +193,6 @@ class RBlock(Block):
 
 class CBlock(Block):
     def __init__(self, name):
-
         # init super:
         Block.__init__(self, name, C)
 
@@ -209,7 +217,6 @@ class CBlock(Block):
 
 class LBlock(Block):
     def __init__(self, name):
-
         # init super:
         Block.__init__(self, name, L)
 
@@ -237,7 +244,6 @@ class LBlock(Block):
 
 class VBlock(Block):
     def __init__(self, name):
-
         # init super:
         Block.__init__(self, name, V)
 
@@ -265,7 +271,6 @@ class VBlock(Block):
 
 class VSinBlock(Block):
     def __init__(self, name):
-
         # init super:
         Block.__init__(self, name, V)
 
@@ -299,7 +304,6 @@ class VSinBlock(Block):
         self.arcs.append((57, 58, 7, -a1, -a2, False))
 
     def get_engine(self, nodes):
-
         vo = self.properties['Voltage Offset (V)']
         va = self.properties['Voltage Amplitude (V)']
         freq = self.properties['Frequency (Hz)']
@@ -313,7 +317,6 @@ class VSinBlock(Block):
 
 class DBlock(Block):
     def __init__(self, name):
-
         Block.__init__(self, name, D)
 
         # ports:
@@ -339,10 +342,8 @@ class DBlock(Block):
 
 class GndBlock(Block):
     def __init__(self, name):
-
         # init super:
         Block.__init__(self, name, None, is_ground=True)
-        self.is_ground = True
 
         # port:
         self.ports['ground'] = Port(self, 0, (50, 0), is_ground=True)
@@ -359,9 +360,67 @@ class GndBlock(Block):
         raise Exception("GND Block has no engine.")
 
 
+class VScopeBlock(Block):
+    def __init__(self, name):
+        # init super:
+        Block.__init__(self, name, None, is_signal_device=True)
+        self.size = (200, 100)
+        self.margin = 10
+
+        # port:
+        self.ports['positive'] = Port(self, 0, (0, 40))
+        self.ports['negative'] = Port(self, 1, (0, 60))
+
+        # rects:
+        (w, h), m = self.size, self.margin
+        self.rects.append((0, 0, w, h, 5))
+
+    def end(self):
+        times = self.engine.time
+        values = self.engine.data
+
+        n = len(times)
+
+        npoints = 1000
+        stride = int(n / npoints)
+        stride = max(stride, 2)
+
+        self.size = (200, 100)
+        self.margin = 10
+
+        (w, h), m = self.size, self.margin
+
+        tscale = (w - m * 2.0) / max(times)
+        toffset = m
+
+        range_ = max(values) - min(values)
+
+        mid = min(values) + range_ * 0.5
+
+        vscale = -(h - m * 4.0) / range_
+
+        voffset = -(mid * vscale - m * 5)
+
+        # path:
+        plot_curve = []
+        for t, v in zip(times[::stride], values[::stride]):
+            plot_curve.append((t * tscale + toffset, v * vscale + voffset))
+
+        self.plot_curves = []
+        self.plot_curves.append(plot_curve)
+
+        window = (m, m), (w - m, m), (w - m, h - m), (m, h - m), (m, m)
+        self.plot_curves.append(window)
+
+    def get_engine(self, nodes):
+        self.engine = VScope(nodes)
+        return self.engine
+
+
 # device type name to class mapping:
 DEVICELIB = dict(R=RBlock, C=CBlock, L=LBlock, V=VBlock,
-                 VSin=VSinBlock, D=DBlock, GND=GndBlock)
+                 VSin=VSinBlock, D=DBlock, GND=GndBlock,
+                 VScope=VScopeBlock)
 
 
 class Mode(object):
@@ -371,15 +430,6 @@ class Mode(object):
     MOVE = 3
     EDIT = 4
     ADD_DEVICE = 5
-
-
-class Schematic(object):
-    def __init__(self, name):
-        self.name = name
-        self.blocks = {}
-        self.connectors = []
-        self.sim_settings = {'dt': 0.01, 'tmax': 10.0, 'maxitr': 100,
-                             'tol': 0.00001, 'voltages': "2", 'currents': "V1"}
 
 
 class PropertyDialog(gui.PropertyDialog):
@@ -423,6 +473,15 @@ def update_properties(parent, properties):
                 if type_ is type(properties[key]):
                     properties[key] = value
     return properties
+
+
+class Schematic(object):
+    def __init__(self, name):
+        self.name = name
+        self.blocks = {}
+        self.connectors = []
+        self.sim_settings = {'dt': 0.01, 'tmax': 10.0, 'maxitr': 100,
+                             'tol': 0.00001, 'voltages': "2", 'currents': "V1"}
 
 
 class SchematicWindow(wx.Panel):
@@ -637,7 +696,6 @@ class SchematicWindow(wx.Panel):
         elif self.mode == Mode.ADD_DEVICE:
             pass
 
-
         self.Refresh()
 
     def on_motion(self, event):
@@ -764,11 +822,11 @@ class SchematicWindow(wx.Panel):
         pen.Cap = wx.CAP_BUTT
         gc.SetPen(pen)
         for i in range(ver):
-            offset = i * spacing - extension/2
-            gc.StrokeLine(offset, 0 - extension/2, offset, h)
+            offset = i * spacing - extension / 2
+            gc.StrokeLine(offset, 0 - extension / 2, offset, h)
         for i in range(hor):
-            offset = i * spacing - extension/2
-            gc.StrokeLine(0 - extension/2, offset, w, offset)
+            offset = i * spacing - extension / 2
+            gc.StrokeLine(0 - extension / 2, offset, w, offset)
 
     def get_bounding(self, path):
         rect = path.GetBox()
@@ -781,7 +839,7 @@ class SchematicWindow(wx.Panel):
     def render_block(self, block, gc):
 
         font = wx.Font(FONT_SIZE, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL,
-                            wx.FONTWEIGHT_BOLD, False, 'Courier 10 Pitch')
+                       wx.FONTWEIGHT_BOLD, False, 'Courier 10 Pitch')
 
         if block.is_ghost:
             gc.SetPen(self.pen_ghost)
@@ -812,6 +870,9 @@ class SchematicWindow(wx.Panel):
                 x2, y2 = point
                 path.AddLineToPoint(x2, y2)
 
+        for rect in block.rects:
+            path.AddRoundedRectangle(*rect)
+
         for circle in block.circles:
             path.AddCircle(*circle)
 
@@ -822,12 +883,20 @@ class SchematicWindow(wx.Panel):
             path.MoveToPoint((x0, y0))
             path.AddArc(x, y, r, a1, a2, clk)
 
-        # for curve in block.curves:
-        #    for cx, cy, x, y in curve.points:
-
-
         path.Transform(matrix)
         gc.StrokePath(path)
+
+        if block.plot_curves:
+            pen = wx.Pen(DEVICE_COLOR, 1)
+            path2 = gc.CreatePath()
+            gc.SetPen(pen)
+            for curve in block.plot_curves:
+                path2.MoveToPoint(curve[0])
+                for point in curve[1:]:
+                    x2, y2 = point
+                    path2.AddLineToPoint(x2, y2)
+            path2.Transform(matrix)
+            gc.StrokePath(path2)
 
         block.bounding_rect, block.center = self.get_bounding(path)
 
@@ -892,7 +961,7 @@ class SchematicWindow(wx.Panel):
             gc.StrokePath(path)
             gc.FillPath(path)
             path = gc.CreatePath()
-            path.AddRectangle(x-r-m, y-r-m, (r + m)*2, (r + m)*2)
+            path.AddRectangle(x - r - m, y - r - m, (r + m) * 2, (r + m) * 2)
             path.Transform(matrix)
             port.bounding_rect, port.center = self.get_bounding(path)
 
@@ -956,7 +1025,7 @@ class SchematicWindow(wx.Panel):
 
     def build_netlist(self):
 
-        groups = [[],]
+        groups = [[], ]
 
         for connector in self.connectors:
             start = connector.start_port
@@ -1000,6 +1069,17 @@ class SchematicWindow(wx.Panel):
         for i, group in enumerate(groups):
             st = set(group)
             groups[i] = list(st)
+
+        # now add all unconnected ports to ground group:
+        for block in self.blocks.values():
+            for port in block.ports.values():
+                found = False
+                for group in groups:
+                    if port in group:
+                        found = True
+                        break
+                if not found:
+                    groups[0].append(port)
 
         netlist = Netlist(self.name)
 
@@ -1046,7 +1126,11 @@ class MainFrame(gui.MainFrame):
     def save_schematic(self, schem, path):
         try:
             with open(path, 'w') as f:
-                pickle.dump(schem.schematic, f)
+                schem = clone(schem.schematic)
+                # remove plot curves:
+                for device in schem.blocks.values():
+                    device.plot_curves = []
+                pickle.dump(schem, f)
                 wx.MessageBox("File saved to: [{0}]".format(path))
         except Exception as e:
             wx.MessageBox("File save failed. {0}".format(e.message))
@@ -1075,6 +1159,9 @@ class MainFrame(gui.MainFrame):
 
         netlist.trans(dt, tmax)
 
+        for block in self.active_schem.blocks.values():
+            block.end()
+
         chans = []
 
         for v in voltages.split():
@@ -1084,6 +1171,10 @@ class MainFrame(gui.MainFrame):
             chans.append(Current(i.strip()))
 
         netlist.plot(*chans)
+
+    def add_gadget(self, type_):
+        if self.active_schem:
+            self.active_schem.start_add(type_)
 
     def on_new_schem(self, event):
         self.new_schem()
@@ -1097,8 +1188,8 @@ class MainFrame(gui.MainFrame):
                                    wx.FD_FILE_MUST_EXIST))
 
         if dlg.ShowModal() == wx.ID_OK:
-                path = dlg.GetPath()
-                self.open_schematic(path)
+            path = dlg.GetPath()
+            self.open_schematic(path)
 
     def on_save_as(self, event):
         schem = None
@@ -1161,9 +1252,12 @@ class MainFrame(gui.MainFrame):
     def on_add_D(self, event):
         self.add_device("D")
 
+    def on_add_vscope(self, event):
+        self.add_gadget("VScope")
+
     def on_setup(self, event):
         self.active_schem.sim_settings = update_properties(self,
-                                            self.active_schem.sim_settings)
+                                                           self.active_schem.sim_settings)
 
     def on_run(self, event):
         self.run()
@@ -1184,22 +1278,7 @@ if __name__ == '__main__':
     frame.open_schematic("/Users/josephmhood/Documents/Cir1.sch")
     # frame.run()
 
-    # sch1 = frame.new_schematic("circuit1")
-    #
-    # netlist = Netlist("Test")
-    #
-    # sch1.add_block('r1', RBlock(), (200, 100))
-    # netlist.device('r1', R((1, 0), 10.0))
-    #
-    # sch1.add_block('v1', VBlock(), (100, 100))
-    # netlist.device('v1', V((1, 0), 100.0))
-    #
-    # sch1.add_block('g1', GndBlock(), (100, 220))
-    #
-    # netlist.trans(0.1, 1.0)
-    # netlist.plot(Voltage(1), Current('v1'))
-
     frame.Show()
     app.MainLoop()
 
-# endregion
+    # endregion

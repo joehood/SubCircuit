@@ -1,6 +1,6 @@
 
 
-from src.pyspyce import *
+from pyspyce import *
 
 
 # netlist = Netlist("Series RLC")

@@ -1,17 +1,14 @@
+
 import sys
+import wx
+import bdb
 
-import matplotlib
-
-from src import ui
-
-
-matplotlib.use('WXAgg')
 from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
 from matplotlib.figure import Figure
 from wx.py.editwindow import EditWindow as PyEdit
 from wx.py.shell import Shell as PyShell
-import bdb
-from src.pyspyce import *
+
+import editor_ui as ui
 
 
 class Debugger(bdb.Bdb):
@@ -158,7 +155,7 @@ class MainFrame(ui.MainFrame):
         plot_panel.draw()
 
 
-def _main_():
+def main():
     """PySpyce Main Function"""
     # force this app to be the main process (above Python.exe).
 
@@ -172,4 +169,4 @@ def _main_():
 
 
 if __name__ == '__main__':
-    _main_()
+    main()

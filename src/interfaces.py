@@ -1,26 +1,26 @@
 """interfaces.py"""
 
 import numpy
-import copy
 
 
-class Device():
+class Device(object):
     """A Device (circuit element) base object."""
 
-    def __init__(self, nodes, internals, **parameters):
+    def __init__(self, nodes, **parameters):
         """Creates a device base.
         :param name: Mandatory name, unique within the parent subcircuit.
         :param nnodes: number of nodes for this device (including internal)
         :param kwargs: Additional keyword arguments stored in the params dict.
         :return: None
         """
-        self.nodes = list(nodes)
-        self.nnodes = len(nodes) + internals
-        self.jac = numpy.zeros((self.nnodes, self.nnodes))
-        self.bequiv = numpy.zeros((self.nnodes, 1))
+        if isinstance(nodes, int):
+            self.nodes = (nodes,)
+        else:
+            self.nodes = list(nodes)
+        self.nnodes = len(self.nodes)
         self.port2node = None
-        self.netlist = None
         self.name = None
+        self.netlist = None
         self.parameters = parameters
 
     def connect(self):
@@ -48,20 +48,8 @@ class Device():
         """
         return self.netlist.simulator.dt
 
-    def get_model(self, mname):
-        """Provides convenient access to all models in the subcircuit
-        :return: The model with key==mname, if it exists in the subcircuit.
-        """
-        if mname in self.netlist.models:
-            return self.netlist.models[mname]
-        else:
-            return None
-
     def get_node_index(self, name):
         return self.netlist.get_node_index(name)
-
-    def create_internal(self, name):
-        return self.netlist.create_internal(name)
 
     def get_across_history(self, port1=None, port2=None, device=None):
         """Gets the across value at the given ports for t-h (last timestep).
@@ -145,7 +133,40 @@ class Device():
         return str(self)
 
 
-class Model():
+class MNADevice(Device):
+    """A Device (circuit element) base object."""
+
+    def __init__(self, nodes, internals, **parameters):
+        """Creates a device base.
+        :param name: Mandatory name, unique within the parent subcircuit.
+        :param nnodes: number of nodes for this device (including internal)
+        :param kwargs: Additional keyword arguments stored in the params dict.
+        :return: None
+        """
+        Device.__init__(self, nodes, **parameters)
+        self.nnodes = len(nodes) + internals
+        self.jac = numpy.zeros((self.nnodes, self.nnodes))
+        self.bequiv = numpy.zeros((self.nnodes, 1))
+
+    def get_model(self, mname):
+        """Provides convenient access to all models in the subcircuit
+        :return: The model with key==mname, if it exists in the subcircuit.
+        """
+        if mname in self.netlist.models:
+            return self.netlist.models[mname]
+        else:
+            return None
+
+    def create_internal(self, name):
+        return self.netlist.create_internal(name)
+
+
+class SignalDevice(Device):
+    def __init__(self, name, nodes, **parameters):
+        Device.__init__(self, nodes, **parameters)
+
+
+class Model(object):
     """Base model (.model) object."""
 
     def __init__(self, name, **kwargs):
@@ -159,7 +180,7 @@ class Model():
         self.params = kwargs
 
 
-class Subckt():
+class Subckt(object):
     """A SPICE subcircuit definition (.subckt)"""
 
     def __init__(self, ports, **parameters):
@@ -192,7 +213,7 @@ class Subckt():
             return False
 
 
-class CurrentSensor():
+class CurrentSensor(object):
     """Interface for current sensor device.
     Should derive from this class and implement get_current_node if this
     device has the ability to provide branch current information via an internal
@@ -209,7 +230,7 @@ class CurrentSensor():
         pass
 
 
-class Stimulus():
+class Stimulus(object):
     """Represents an independant source simulus function (PULSE, SIN, etc). This class
     must be derived from and setup() and step() methods must be implemented.
     """
@@ -226,7 +247,7 @@ class Stimulus():
         raise NotImplementedError
 
 
-class Table():
+class Table(object):
     """Generic lookup table for transfer functions of dependant sources."""
 
     def __init__(self, *pairs):
@@ -265,9 +286,38 @@ class Table():
             return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
 
 
-class PySpyceError(Exception):
-    def __init__(self, msg):
-        """Creates a new PySpyceError
-        :param msg: Error message
+class Plottable:
+    def __init__(self):
+        pass
+
+
+class Voltage(Plottable):
+    """Represents a plottable voltage value."""
+
+    def __init__(self, node1=None, node2=0, device=None):
+        """Creates a new plottable voltage object.
+        Arguments:
+        :param node1: The circuit node for the positive voltage
+        :param node2: The circuit node for the negative voltage (0 by default)
         """
-        Exception.__init__(self, "PySpyce Error: {0}".format(msg))
+        Plottable.__init__(self)
+        self.device = None
+        self.node1 = None
+        self.node2 = None
+        if device:
+            self.device = device
+        elif node1:
+            self.node1 = node1
+            self.node2 = node2
+
+
+class Current(Plottable):
+    """Represents a plottable current value."""
+
+    def __init__(self, vsource):
+        """Creates a new plottable cuurent object.
+        Arguments:
+        vsource -- The name of the current-providing device.
+        """
+        Plottable.__init__(self)
+        self.vsource = vsource

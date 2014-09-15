@@ -1,55 +1,15 @@
 """Contains the functions for analysis and simulation for a SPICE network."""
 
 from __future__ import print_function, division
-
 import matplotlib.pyplot as plt
-
-from src.netlist import *
-
+import numpy
+from interfaces import *
 
 try:
     import wx
-    import wxpyspyce
+    from src import editor
 except:
     pass
-
-
-class Plottable:
-    def __init__(self):
-        pass
-
-
-class Voltage(Plottable):
-    """Represents a plottable voltage value."""
-
-    def __init__(self, node1=None, node2=0, device=None):
-        """Creates a new plottable voltage object.
-        Arguments:
-        :param node1: The circuit node for the positive voltage
-        :param node2: The circuit node for the negative voltage (0 by default)
-        """
-        Plottable.__init__(self)
-        self.device = None
-        self.node1 = None
-        self.node2 = None
-        if device:
-            self.device = device
-        elif node1:
-            self.node1 = node1
-            self.node2 = node2
-
-
-
-class Current(Plottable):
-    """Represents a plottable current value."""
-
-    def __init__(self, vsource):
-        """Creates a new plottable cuurent object.
-        Arguments:
-        vsource -- The name of the current-providing device.
-        """
-        Plottable.__init__(self)
-        self.vsource = vsource
 
 
 class Simulator():
@@ -66,6 +26,7 @@ class Simulator():
         self.netlist = netlist
         self.netlist.simulator = self
         self.t = 0.0
+        self.tmax = 0.0
         self.maxitr = maxitr
         self.tol = tol
         self.trans_data = None
@@ -136,6 +97,7 @@ class Simulator():
         # determine the time-series array length and setup the circuit:
         n = int(tstop / tstep) + 1
         self.netlist.setup(tstep)
+        self.tmax = tstop
 
         # allocate the arrays and save to variables for plot():
         self.trans_data = numpy.zeros((self.netlist.nodenum, n))
@@ -234,7 +196,7 @@ class Simulator():
                 curves.append((self.trans_time, trace, label))
 
         if notebook:
-            plot_panel = wxpyspyce.PlotPanel(notebook)
+            plot_panel = editor.PlotPanel(notebook)
             notebook.AddPage(plot_panel, 'Plot', True)
             plot_panel.set_data(curves)
             plot_panel.draw()
@@ -247,7 +209,8 @@ class Simulator():
                 plt.title(self.netlist.title)
                 plt.legend()
                 plt.xlabel('t (s)')
-            plt.show()
+            if curves:
+                plt.show()
 
         return plot_panel
 

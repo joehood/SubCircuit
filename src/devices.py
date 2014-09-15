@@ -1,16 +1,14 @@
 """Contains the core (atomic) SPICE circuit element definitions."""
 
 import math
-
-from src.interfaces import *
-import pyspyce
-
-
+from interfaces import *
+import numpy as np
 
 
 # Subcircuit Instance Device:
 
-class X(Device):
+
+class X(MNADevice):
     """Subckt instance device (SPICE X)"""
 
     def __init__(self, nodes, subckt, **parameters):
@@ -20,7 +18,7 @@ class X(Device):
         :param parameters: Dictionary of parameters for the subcircuit instance
         :return: New subckt instance device
         """
-        Device.__init__(self, nodes, 0, **parameters)
+        MNADevice.__init__(self, nodes, 0, **parameters)
         self.subckt = subckt
         self.parameters = parameters
 
@@ -35,7 +33,8 @@ class X(Device):
 
 # Elementary Devices:
 
-class R(Device):
+
+class R(MNADevice):
     """A SPICE R (resistor or semiconductor resistor) device."""
 
     def __init__(self, nodes, value,
@@ -57,7 +56,7 @@ class R(Device):
         RLOAD 2 10 10K
         RMOD 3 7 RMODEL L=10u W=1u
         """
-        Device.__init__(self, nodes, 0, **parameters)
+        MNADevice.__init__(self, nodes, 0, **parameters)
         self.value = value
         self.rmodel = rmodel
         self.l = l
@@ -88,7 +87,7 @@ class R(Device):
         pass
 
 
-class C(Device):
+class C(MNADevice):
     """SPICE capacitor device"""
 
     def __init__(self, nodes, value, mname=None, l=None, w=None, ic=None,
@@ -138,7 +137,7 @@ class C(Device):
 
         CAP = CJ(LENGTH - NARROW)(WIDTH - NARROW) + 2.CJSW(LENGTH + WIDTH - 2.NARROW)
         """
-        Device.__init__(self, nodes, 0, **parameters)
+        MNADevice.__init__(self, nodes, 0, **parameters)
         self.value = value
         self.ic = ic
 
@@ -159,7 +158,7 @@ class C(Device):
         self.bequiv[1] = -self.value / dt * vc
 
 
-class L(Device, CurrentSensor):
+class L(MNADevice, CurrentSensor):
     """SPICE Inductor Device"""
 
     def __init__(self, nodes, value, ic=None, res=0.0, **parameters):
@@ -176,7 +175,7 @@ class L(Device, CurrentSensor):
         initial conditions (if any) apply only if the UIC option is specified on the
         .TRAN analysis line.
         """
-        Device.__init__(self, nodes, 1, **parameters)
+        MNADevice.__init__(self, nodes, 1, **parameters)
         self.value = value
         self.ic = ic
         self.res = res
@@ -202,7 +201,7 @@ class L(Device, CurrentSensor):
         return self.port2node[2], 1.0
 
 
-class K(Device):
+class K(MNADevice):
     def __init__(self, l1name, l2name, value, **parameters):
         """
         Coupled (Mutual) Inductors
@@ -217,7 +216,7 @@ class K(Device):
         equal to 1. Using the 'dot' convention, place a 'dot' on the first node of each
         inductor.
         """
-        Device.__init__(self, [0, 0], 0, **parameters)
+        MNADevice.__init__(self, [0, 0], 0, **parameters)
         self.value = value
         self.l1name = l1name
         self.l2name = l2name
@@ -247,7 +246,7 @@ class K(Device):
         self.bequiv[1] = self.mutual / dt * current1
 
 
-class S(Device, CurrentSensor):
+class S(MNADevice, CurrentSensor):
     """
     General form:
 
@@ -326,7 +325,7 @@ class S(Device, CurrentSensor):
         :param vsource: name of the controlling voltage source. Optional
         :param on: defines whether the initial state of the switch is ON at t=0
         """
-        Device.__init__(self, name, 3)
+        MNADevice.__init__(self, name, 3)
         self.name = name
         self.node1 = nodes[0]
         self.node2 = nodes[1]
@@ -352,7 +351,7 @@ class S(Device, CurrentSensor):
         self.vh = 0.0
         self.ih = 0.0
         self.ron = 1.0
-        self.roff = pyspyce.ONE_OVER_GMIN
+        self.roff = 1.0E12
 
         self.kwargs = kwargs
 
@@ -429,14 +428,14 @@ class S(Device, CurrentSensor):
         return self.nodes[2]
 
 
-class W(Device):
+class W(MNADevice):
     pass  # todo
 
 
 # Independant Sources:
 
 
-class V(Device, CurrentSensor):
+class V(MNADevice, CurrentSensor):
     """A SPICE Voltage source or current sensor."""
 
     def __init__(self, nodes, value, res=0.0, induct=0.0, **kwargs):
@@ -485,7 +484,7 @@ class V(Device, CurrentSensor):
         are omitted or set to zero, the default values shown are assumed. (TSTEP is the printing
         increment and TSTOP is the final time (see the .TRAN control line for explanation)).
         """
-        Device.__init__(self, nodes, 1, **kwargs)
+        MNADevice.__init__(self, nodes, 1, **kwargs)
 
         # determine type of value provided:
         if isinstance(value, Stimulus):
@@ -537,7 +536,7 @@ class V(Device, CurrentSensor):
         return self.port2node[2], -1.0
 
 
-class I(Device):
+class I(MNADevice):
     """A SPICE Current source or current sensor."""
 
     def __init__(self, name, node1, node2,
@@ -545,7 +544,7 @@ class I(Device):
 
         """TODO
         """
-        Device.__init__(self, name, 2)
+        MNADevice.__init__(self, name, 2)
         self.nodes = [node1, node2]
         self.node2port = {node1: 0, node2: 1}
 
@@ -593,11 +592,11 @@ class I(Device):
 # Linear Dependant Sources:
 
 
-class G(Device):
+class G(MNADevice):
     pass  # todo
 
 
-class E(Device, CurrentSensor):
+class E(MNADevice, CurrentSensor):
     """A SPICE E (VCVS) device."""
 
     def __init__(self, name, nplus, nminus, ncplus, ncminus, internal,
@@ -631,7 +630,7 @@ class E(Device, CurrentSensor):
         voltage gain.
 
         """
-        Device.__init__(self, name, 5)
+        MNADevice.__init__(self, name, 5)
         self.nodes = [nplus, nminus, ncplus, ncminus, internal]
 
         self.node2port = {nplus: 0,
@@ -689,40 +688,40 @@ class E(Device, CurrentSensor):
         return self.nodes[4]
 
 
-class F(Device):
+class F(MNADevice):
     pass  # todo
 
 
-class H(Device):
+class H(MNADevice):
     pass  # todo
 
 
 # Non-linear Dependant Sources:
 
 
-class B(Device):
+class B(MNADevice):
     pass  # todo
 
 
 # Transmission Lines:
 
 
-class T(Device):
+class T(MNADevice):
     pass  # todo
 
 
-class O(Device):
+class O(MNADevice):
     pass  # todo
 
 
-class U(Device):
+class U(MNADevice):
     pass  # todo
 
 
 # Diodes and Transistors:
 
 
-class D(Device):
+class D(MNADevice):
     """Represents a SPICE Diode device."""
 
     def __init__(self, nodes, model=None, area=None, off=None,
@@ -746,7 +745,7 @@ class D(Device):
         temperature at which this device is to operate, and overrides the temperature
         specification on the .OPTION control line.
         """
-        Device.__init__(self, nodes, 0, **parameters)
+        MNADevice.__init__(self, nodes, 0, **parameters)
         self.mname = model
         self.area = area
         self.off = off
@@ -812,73 +811,52 @@ class D(Device):
         self.bequiv[1] = beq
 
 
-class Q(Device):
+class Q(MNADevice):
     pass  # todo
 
 
-class J(Device):
+class J(MNADevice):
     pass  # todo
 
 
-class M(Device):
+class M(MNADevice):
     pass  # todo
 
 
-class Z(Device):
+class Z(MNADevice):
     pass  # todo
 
 
-# Experimental:
+# Signal Devices:
 
 
-class GenericTwoPort(Device):
-    """
-    EXPERIMENTAL
-    Device that allows the definition of a two port device with an arbitrary
-    non-linear current function.
-    """
+class VScope(SignalDevice):
+    def __init__(self, nodes, **parameters):
+        SignalDevice.__init__(self, nodes, 0, **parameters)
+        self.time = []
+        self.data = []
+        self.nodes = nodes
+        self.i = 0
+        
+    def connect(self):
+        npos, nneg = self.nodes
+        self.port2node = {0: self.get_node_index(npos),
+                          1: self.get_node_index(nneg)}
 
-    def __init__(self, name, node1, node2, i):
-        """
-        Creates a new generic two-port device.
-        Arguments:
-        name  -- A mandatory name (must be unique within parent subcircuit)
-        node1 -- The index of the node attached to the positive or anode port
-        node2 -- The index of the node attached to the negative or cathode port
-        i     -- The current equation as a function of the sympy symbol 'v'
-        Example usage:
-        To create a simple non-linear diode model using Schockley's equation:
-
-        Is = 5.0E-9
-        vT = 25.85E-3
-        diode = GenericTwoPort('D1', 1, 0, i = (Isat * math.exp(v / vT) - 1.0))
-        """
-        Device.__init__(self, name, 2)
-        self.nodes = [node1, node2]
-        self.node2port = {node1: 0, node2: 1}
-        self.i = i
-        # self.g = sympy.diff(i, v)
-        # self.get_g = sympy.lambdify(v, self.g, "math")
-        # self.get_i = sympy.lambdify(v, self.i, "math")
+    def update(self):
+        pass
 
     def start(self, dt):
         pass
+        # tmax = self.netlist.simulator.tmax
+        # n = tmax / dt
+        # self.time = np.zeros(n)
+        # self.data = np.zeros(n)
 
     def step(self, dt, t):
-        pass
-
-    def minor_step(self, dt, t, k):
-        v = (self.subckt.across[self.nodes[1]] -
-             self.subckt.across[self.nodes[0]])
-
-        g = self.get_g(v)
-        i = self.get_i(v) - g * v
-        self.jac[0, 0] = g
-        self.jac[0, 1] = -g
-        self.jac[1, 0] = -g
-        self.jac[1, 1] = g
-        self.bequiv[0] = -i
-        self.bequiv[1] = i
+        v = self.get_across(0, 1)
+        self.time.append(t)
+        self.data.append(v)
 
 
 # Models:
