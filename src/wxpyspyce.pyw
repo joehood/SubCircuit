@@ -18,26 +18,32 @@ import gui
 # SELECT_COLOR = wx.Colour(255, 255, 255)
 # HOVER_COLOR = wx.Colour(255, 255, 255)
 
-BG_COLOR = wx.Colour(0, 0, 0)
-GRID_COLOR = wx.Colour(30, 30, 30)
-DEVICE_COLOR = wx.Colour(130, 130, 130)
-SELECT_COLOR = wx.Colour(255, 255, 255)
-HOVER_COLOR = wx.Colour(255, 255, 255)
+# BG_COLOR = wx.Colour(0, 0, 0)
+# GRID_COLOR = wx.Colour(30, 30, 30)
+# DEVICE_COLOR = wx.Colour(130, 130, 130)
+# SELECT_COLOR = wx.Colour(255, 255, 255)
+# HOVER_COLOR = wx.Colour(255, 255, 255)
 
-LINE_WIDTH = 3
-SELECT_WIDTH = 6
+BG_COLOR = wx.Colour(255, 255, 255)
+GRID_COLOR = wx.Colour(255, 255, 255)
+DEVICE_COLOR = wx.Colour(0, 0, 0)
+SELECT_COLOR = wx.Colour(0, 0, 0)
+HOVER_COLOR = wx.Colour(0, 0, 0)
+GHOST_COLOR = wx.Colour(220, 220, 220)
+                        
+LINE_WIDTH = 1
+SELECT_WIDTH = 5
 HOVER_WIDTH = 3
 GRID_SIZE = 20
 GRID_WIDTH = 1
 SHOW_CROSSHAIR = False
 MOVE_DELTA = GRID_SIZE
-GHOST_COLOR = GRID_COLOR
 DEF_DEVICE = "R"
-FONT_SIZE = 20
+FONT_SIZE = 14
 ORTHO_CONNECTORS = True
 CONNECTOR_HIT_MARGIN = 10
 PORT_HIT_MARGIN = 10
-PORT_RADIUS = 4
+PORT_RADIUS = 3
 
 # endregion
 
@@ -1600,10 +1606,10 @@ if __name__ == '__main__':
     frame = MainFrame()
     frame.SetSize((800, 600))
     frame.SetPosition((100, 100))
-    frame.new_schem()
+    #frame.new_schem()
 
-    #frame.open_schematic("/Users/josephmhood/Documents/Cir1.sch")
-    #frame.run()
+    frame.open_schematic("/Users/josephmhood/Documents/Cir1.sch")
+    frame.run()
 
     frame.Show()
     app.MainLoop()
