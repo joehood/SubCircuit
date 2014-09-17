@@ -147,6 +147,9 @@ class Netlist():
         self.across_last = np.copy(self.across) # update netwon state at k=0
         self.across_history = np.copy(self.across)  # save off across history
 
+        for device in self.devices.values():
+            device.post_step(dt, t)
+
         # self.print_matrices()
 
         return success, k

@@ -2,6 +2,7 @@ from __future__ import print_function, division
 import pickle
 import os
 from collections import OrderedDict as ODict
+import math
 
 import wx
 
@@ -24,28 +25,66 @@ import gui
 # SELECT_COLOR = wx.Colour(255, 255, 255)
 # HOVER_COLOR = wx.Colour(255, 255, 255)
 
-BG_COLOR = wx.Colour(255, 255, 255)
-GRID_COLOR = wx.Colour(200, 200, 200)
+BG_COLOR = wx.Colour(230, 255, 230)
+GRID_COLOR = wx.Colour(200, 230, 200)
 DEVICE_COLOR = wx.Colour(0, 0, 0)
 SELECT_COLOR = wx.Colour(0, 0, 0)
 HOVER_COLOR = wx.Colour(0, 0, 0)
 GHOST_COLOR = wx.Colour(220, 220, 220)
                         
 LINE_WIDTH = 1
-SELECT_WIDTH = 5
-HOVER_WIDTH = 3
-GRID_SIZE = 40
+SELECT_WIDTH = 3
+HOVER_WIDTH = 2
+GRID_SIZE = 20
 GRID_WIDTH = 1
 SHOW_CROSSHAIR = False
 MOVE_DELTA = GRID_SIZE
 DEF_DEVICE = "R"
 FONT_SIZE = 14
-ORTHO_CONNECTORS = True
+ORTHO_CONNECTORS = False
 CONNECTOR_HIT_MARGIN = 10
 PORT_HIT_MARGIN = 10
 PORT_RADIUS = 3
+SNAP_TO_GRID = True
 
 # endregion
+
+
+# region Notes
+"""
+
+State:
+
+start
+  |
+  v
+DISARMED
+  |
+  v
+after init
+  |
+  v
+STANDBY
+
+CONNECT
+
+ADD_DEVICE
+
+
+
+
+"""
+# endregion
+
+
+class Mode(object):
+    DISARMED = 0
+    STANDBY = 1
+    CONNECT = 3
+    SELECTION = 4
+    MOVE = 5
+    EDIT = 6
+    ADD_DEVICE = 7
 
 
 class Orientation:
@@ -55,6 +94,7 @@ class Orientation:
 
 
 class SchematicObject(object):
+    zorder = 0
     def __init__(self):
         self.position = 0, 0
         self.rotation = 0
@@ -64,8 +104,9 @@ class SchematicObject(object):
         self.selected = False
         self.center = (0, 0)
         self.hover = False
-        self.selected = False
         self.bounding_rects = [(0, 0, 0, 0)]
+        self.zorder = SchematicObject.zorder
+        SchematicObject.zorder += 1
 
     def translate(self, delta):
         x, y = self.position
@@ -74,6 +115,8 @@ class SchematicObject(object):
         if self.bounding_rects:
             for i, (x, y, w, h) in enumerate(self.bounding_rects):
                 self.bounding_rects[i] = (x + dx, y + dx, w, h)
+        x, y = self.center
+        self.center = x + dx, y + dy
 
     def rotate(self, angle):
         self.rotation += angle
@@ -92,85 +135,171 @@ class SchematicObject(object):
 
 
 class ConnectionPoint(SchematicObject):
-    def __init__(self):
+    def __init__(self, connector):
         SchematicObject.__init__(self)
+        self.connectors = []
+        if connector:
+            self.add_connector(connector)
+        self.radius = PORT_RADIUS
+        self.hit_margin = PORT_HIT_MARGIN
+        self.connected = False
+
+    def add_connector(self, connector):
+        if connector not in self.connectors:
+            self.connectors.append(connector)
+    def __getitem__(self, key):
+        if isinstance(self, KneePoint):
+            return self.position[key]
+        else:
+            return self.center[key]
 
 
 class Port(ConnectionPoint):
     def __init__(self, block, index, position, is_ground=False):
-        ConnectionPoint.__init__(self)
+        ConnectionPoint.__init__(self, None)
         self.index = index
         self.node = None
         self.position = position
-        self.connectors = []
         self.block = block
-        self.radius = PORT_RADIUS
-        self.hit_margin = PORT_HIT_MARGIN
-        self.connected = False
         self.is_ground = is_ground
 
+    def translate(self, delta):
+        pass
+
     def __str__(self):
-        return "{0}:{1}".format(self.block, self.index)
+        return "{0}_{1}".format(self.block, self.index)
 
     def __repr__(self):
         return str(self)
 
 
-class Joint(ConnectionPoint):
-    def __init__(self):
-        ConnectionPoint.__init__(self)
-        self.port = None
-        self.segment = None
-        self.connector = None
-        self.fixed = False
+class KneePoint(ConnectionPoint):
+    def __init__(self, connector, position):
+        ConnectionPoint.__init__(self, connector)
+        self.position = position
+        self.segments = None
+        self.center = position
 
 
 class Segment(SchematicObject):
-    def __init__(self):
+    def __init__(self, connector, connection1, connection2):
         SchematicObject.__init__(self)
-        self.joints = []
-        self.line = (0, 0, 0, 0)
+        self.connector = connector
+        self.connection1 = connection1
+        self.connection2 = connection2
         self.orientation = Orientation.NONE
+        self.closest_hit_point = None
+        self.ghost_knee = None
+
+    def __getitem__(self, key):
+        connections = self.connection1, self.connection2
+        return connections[key]
+
+    def hittest(self, point):
+        pt1, pt2 = self
+        if pt1 and pt2:
+            pt, dis = distance((pt1, pt2), point)
+            self.closest_hit_point = pt
+            if dis <= CONNECTOR_HIT_MARGIN:
+                return True
+            else:
+                return False
+        else:
+            return False
 
 
 class Connector(SchematicObject):
-    def __init__(self, start):
+    def __init__(self, connection):
         SchematicObject.__init__(self)
-
-        self.start = start
-        self.end = start
+        self.start = connection.center
+        self.end = self.start
         self.partial = True
         self.knees = []
         self.ports = []
-        self.joints = []
         self.end_connection_point = None
-        self.start_connection_point = None
+        self.start_connection_point = connection
         self.segments = []
-
+        self.active_connection = connection
+        connection.add_connector(self)
 
     def add_port(self, port):
-        self.ports.append(port)
-        port.connected = True
+        if not port in self.ports:
+            self.ports.append(port)
+            port.add_connector(self)
+            port.connected = True
 
-    def add_knee(self, point):
-        self.knees.append(point)
+    def add_knee(self, knee):
+        if not knee in self.knees:
+            self.knees.append(knee)
+            knee.add_connector(self)
+            knee.connected = True
+
+    def get_connectoin_points(self):
+        return self.knees + self.ports
+
+    def add_segment(self, connection):
+        segment = Segment(self, self.active_connection, connection)
+        self.segments.append(segment)
+        if isinstance(connection, KneePoint):
+            self.add_knee(connection)
+        elif isinstance(connection, Port):
+            self.add_port(connection)
+        connection.add_connector(self)
+        self.active_connection = connection
+
+    def split_segment(self, segment, connection):
+        if segment in self.segments:
+            connection1 = segment.connection1
+            segment2 = Segment(self, connection1, connection)
+            segment.connection1 = connection
+            i = self.segments.index(segment)
+            self.segments.insert(i, segment2)
+            self.add_knee(connection)
+            connection.add_connector(self)
+
+    def remove_knee(self, knee):
+        for i, segment in enumerate(self.segments):
+            if segment.connection2 is knee:
+                segment.connection2 = self.segments[i+1].connection2
+                self.segments.remove(self.segments[i+1])
+                self.knees.remove(knee)
+                break
+
+    def get_last_point(self):
+        if self.segments:
+            (x1, y1), (x2, y2) = self.segments[-1]
+            return (x2, y2)
+        else:
+            return self.start
+
+    def translate(self, delta):
+        x1, y1 = self.start
+        x2, y2 = self.end
+        dx, dy = delta
+        self.start = x1 + dx, y1 + dy
+        self.end = x2 + dx, y2 + dy
+        for knee in self.knees:
+            knee.translate(delta)
 
     def __str__(self):
-        s = ""
+        s = "("
         for port in self.ports:
             s += str(port) + "-"
-        return s.rstrip("-")
+        return s.rstrip("-") + ")"
 
     def __repr__(self):
         return str(self)
 
 
-class BlockField(SchematicObject):
-    def __init__(self, name, text, position=(0, 0)):
+class BlockLabel(SchematicObject):
+    def __init__(self, name, text, position):
         SchematicObject.__init__(self)
         self.name = name
-        self.text = text
         self.position = position
+        self.properties = dict(text=text)
+
+    def get_text(self):
+        return self.properties["text"]
 
 
 class Block(SchematicObject):
@@ -195,7 +324,8 @@ class Block(SchematicObject):
 
         self.nominal_size = (100, 100)
 
-        self.fields['name'] = BlockField('name', name)
+        label = BlockLabel('name', name, (-20, 0))
+        self.fields['name'] = label
 
     def get_engine(self, nodes):
         raise NotImplementedError()
@@ -367,13 +497,12 @@ class DBlock(Block):
         self.properties['Vt (V)'] = 25.85e-3
 
         # leads:
-        self.lines.append(((60, 0), (50, 37)))
-        self.lines.append(((60, 63), (50, 100)))
+        self.lines.append(((60, 0), (60, 37)))
+        self.lines.append(((60, 63), (60, 100)))
 
         # diode symbol:
         self.lines.append(((60, 37), (42, 63), (78, 63), (60, 37)))
         self.lines.append(((42, 37), (78, 37)))
-
 
     def get_engine(self, nodes):
         return D(nodes)
@@ -403,16 +532,22 @@ class VScopeBlock(Block):
     def __init__(self, name):
         # init super:
         Block.__init__(self, name, None, is_signal_device=True)
-        self.size = (180, 120)
+        self.size = (160, 120)
         self.margin = 12
 
         # port:
         self.ports['positive'] = Port(self, 0, (0, 60))
-        self.ports['negative'] = Port(self, 1, (90, 120))
+        self.ports['negative'] = Port(self, 1, (80, 120))
 
         # rects:
         (w, h), m = self.size, self.margin
-        self.rects.append((0, 0, w, h, 5))
+        
+        # rects:
+        (w, h), m = self.size, self.margin
+        self.rects.append(((0, 0, w, h, 5), (wx.BLACK, wx.Colour(180, 180, 180))))
+
+        window = m, m, w - m * 2, h - m * 2, 1
+        self.rects.append((window, (wx.Colour(80, 80, 80), wx.Colour(255, 255, 255))))
 
     def end(self):
         times = self.engine.time
@@ -448,13 +583,104 @@ class VScopeBlock(Block):
                 plot_curve.append((t * tscale + toffset, v * vscale + voffset))
 
             self.plot_curves = []
-            self.plot_curves.append(plot_curve)
+            self.plot_curves.append((plot_curve, wx.Colour(200, 100, 100)))
 
             window = (m, m), (w - m, m), (w - m, h - m), (m, h - m), (m, m)
-            self.plot_curves.append(window)
+            self.plot_curves.append((window, None))
 
     def get_engine(self, nodes):
+        if len(nodes) == 1:
+            nodes += [0]  # if only one connection, ground neg lead
         self.engine = VScope(nodes)
+        return self.engine
+
+
+class VScope3Block(Block):
+    def __init__(self, name):
+        # init super:
+        Block.__init__(self, name, None, is_signal_device=True)
+        self.size = (160, 120)
+        self.margin = 12
+
+        # port:
+        self.ports['A'] = Port(self, 0, (0, 40))
+        self.ports['B'] = Port(self, 1, (0, 60))
+        self.ports['C'] = Port(self, 2, (0, 80))
+        self.ports['N'] = Port(self, 3, (80, 120))
+
+        # rects:
+        (w, h), m = self.size, self.margin
+
+        # rects:
+        (w, h), m = self.size, self.margin
+        self.rects.append(((0, 0, w, h, 5), (wx.BLACK, wx.Colour(180, 180, 180))))
+
+        window = m, m, w - m * 2, h - m * 2, 1
+        self.rects.append((window, (wx.Colour(80, 80, 80), wx.Colour(255, 255, 255))))
+
+    def end(self):
+        times = self.engine.time
+        values1 = self.engine.data1
+        values2 = self.engine.data2
+        values3 = self.engine.data3
+
+        n = len(times)
+
+        npoints = 1000
+        stride = int(n / npoints)
+        stride = max(stride, 2)
+
+        (w, h), m = self.size, self.margin
+
+        if max(times) > 0.0:
+            tscale = (w - m * 2.0) / max(times)
+            toffset = m
+
+            all = values1 + values2 + values3
+
+            range_ = max(all) - min(all)
+
+            mid = min(all) + range_ * 0.5
+
+            vscale = 1.0
+            if range_ > 0.0:
+                vscale = -(h - m * 4.0) / range_
+
+            self.margin = 12
+
+            voffset = -(mid * vscale - m * 5)
+
+            self.plot_curves = []
+
+            # path:
+            plot_curve1 = []
+            plot_curve2 = []
+            plot_curve3 = []
+
+            for t, v1 in zip(times[::stride], values1[::stride]):
+                plot_curve1.append((t * tscale + toffset, v1 * vscale + voffset))
+
+            for t, v2 in zip(times[::stride], values2[::stride]):
+                plot_curve2.append((t * tscale + toffset, v2 * vscale + voffset))
+
+            for t, v3 in zip(times[::stride], values3[::stride]):
+                plot_curve3.append((t * tscale + toffset, v3 * vscale + voffset))
+
+            self.plot_curves.append((plot_curve1, wx.Colour(200, 100, 100)))
+            self.plot_curves.append((plot_curve2, wx.Colour(100, 200, 100)))
+            self.plot_curves.append((plot_curve3, wx.Colour(100, 100, 200)))
+
+            window = (m, m), (w - m, m), (w - m, h - m), (m, h - m), (m, m)
+            self.plot_curves.append((window, None))
+
+    def get_engine(self, nodes):
+        if len(nodes) == 1:
+            nodes += [0, 0, 0]
+        if len(nodes) == 2:
+            nodes += [0, 0]
+        if len(nodes) == 3:
+            nodes += [0]
+        self.engine = VScope3(nodes)
         return self.engine
 
 
@@ -462,16 +688,30 @@ class IScopeBlock(Block):
     def __init__(self, name):
         # init super:
         Block.__init__(self, name, None)
-        self.size = (180, 120)
+        self.size = (160, 120)
         self.margin = 12
 
         # port:
-        self.ports['positive'] = Port(self, 0, (70, 120))
-        self.ports['negative'] = Port(self, 1, (110, 120))
+        self.ports['positive'] = Port(self, 0, (60, 160))
+        self.ports['negative'] = Port(self, 1, (100, 160))
+
+        # lines:
+        self.lines.append(((80, 120), (80, 150)))
+        self.lines.append(((60, 160), (100, 160)))
+
+        # plus:
+        self.lines.append(((60, 133), (60, 143)))
+        self.lines.append(((55, 138), (65, 138)))
+
+        # circle
+        self.circles.append((75, 150, 10, 20))
 
         # rects:
         (w, h), m = self.size, self.margin
-        self.rects.append((0, 0, w, h, 5))
+        self.rects.append(((0, 0, w, h, 5), (wx.BLACK, wx.Colour(180, 180, 180))))
+
+        window = m, m, w - m * 2, h - m * 2, 1
+        self.rects.append((window, (wx.Colour(80, 80, 80), wx.Colour(255, 255, 255))))
 
     def end(self):
         times = self.engine.time
@@ -507,10 +747,9 @@ class IScopeBlock(Block):
                 plot_curve.append((t * tscale + toffset, i * iscale + ioffset))
 
             self.plot_curves = []
-            self.plot_curves.append(plot_curve)
+            self.plot_curves.append((plot_curve, wx.Colour(200, 100, 100)))
 
-            window = (m, m), (w - m, m), (w - m, h - m), (m, h - m), (m, m)
-            self.plot_curves.append(window)
+
 
     def get_engine(self, nodes):
         self.engine = IScope(nodes)
@@ -520,23 +759,14 @@ class IScopeBlock(Block):
 # device type name to class mapping:
 DEVICELIB = dict(R=RBlock, C=CBlock, L=LBlock, V=VBlock,
                  VSin=VSinBlock, D=DBlock, GND=GndBlock,
-                 VScope=VScopeBlock, IScope=IScopeBlock)
-
-
-class Mode(object):
-    DISARMED = 0
-    STANDBY = 1
-    CONNECT = 2
-    MOVE = 3
-    EDIT = 4
-    ADD_DEVICE = 5
-    ADD_JOINT = 6
+                 VScope=VScopeBlock, VScope3=VScope3Block, IScope=IScopeBlock)
 
 
 class PropertyDialog(gui.PropertyDialog):
-    def __init__(self, parent, properties):
+    def __init__(self, parent, caption, properties):
         self.armed = False
         gui.PropertyDialog.__init__(self, parent)
+        self.SetTitle(caption)
         self.types = []
         self.keys = []
         self.properties = properties
@@ -551,8 +781,14 @@ class PropertyDialog(gui.PropertyDialog):
         self.armed = True
         self.szr_main.Fit(self)
         self.Layout()
+        self.propgrid.Bind(wx.EVT_KILL_FOCUS, self.OnKillFocus)
 
-    def on_grid_update(self, event):
+
+    def OnKillFocus(self, event):
+        # Cell editor's grandparent, the grid GridWindow's parent, is the grid.
+        self.propgrid.SaveEditControlValue()
+
+    def update(self):
         if self.armed:
             for i in range(self.n):
                 type_ = self.types[i]
@@ -563,9 +799,17 @@ class PropertyDialog(gui.PropertyDialog):
                 except:
                     pass
 
+    def on_grid_update(self, event):
+        self.update()
 
-def update_properties(parent, properties):
-    propdlg = PropertyDialog(parent, properties)
+    def OnClose(self, event):
+        self.update()
+        self.result = wx.ID_OK
+        self.Destroy()
+
+
+def update_properties(parent, caption, properties):
+    propdlg = PropertyDialog(parent, caption, properties)
 
     if propdlg.ShowModal() == wx.ID_OK:
         for key, value in propdlg.properties.items():
@@ -631,11 +875,6 @@ class SchematicWindow(wx.Panel):
         self.scale = 1.0
         self.scale_factor = 0.01
 
-        # block management:
-        self.selected_objects = []
-        self.ghost = None
-        self.new_counter = 1
-
         self.pen = wx.Pen(DEVICE_COLOR, LINE_WIDTH)
         self.pen_hover = wx.Pen(HOVER_COLOR, HOVER_WIDTH)
         self.pen_select = wx.Pen(SELECT_COLOR, SELECT_WIDTH)
@@ -644,44 +883,155 @@ class SchematicWindow(wx.Panel):
         self.brush_hover = wx.Brush(HOVER_COLOR)
         self.brush_select = wx.Brush(SELECT_COLOR)
         self.brush_ghost = wx.Brush(GHOST_COLOR)
-
         self.pen.Cap = wx.CAP_ROUND
         self.pen_hover.Cap = wx.CAP_ROUND
         self.pen_select.Cap = wx.CAP_ROUND
 
-        # mode management:
-        self.mode = Mode.STANDBY
-
-        # connection management:
-        self.active_connector = None
-        self.active_joint = None
-        self.active_joint_conn = None
-
-        # solution management:
-        self.netlist = None
-
         # drawing:
         self.SetDoubleBuffered(True)
         self.gc = None
+
+        # members:
+        self.netlist = None
+        self.selected_objects = []
+        self.hit_objects = []
+        self.hit_blocks = []
+        self.hit_ports = []
+        self.hit_fields = []
+        self.hit_connectors = []
+        self.hit_connection_points = []
+        self.hit_segments = []
+        self.ghost = None
+        self.new_counter = 1
+        self.active_connector = None
+        self.dragged = False
+        self.top_obj = None
+        self.hover_objects = []
+        self.ghost_knee_segment = None
+
+        # arm the schematic:
+        self.mode = Mode.STANDBY
 
     def on_size(self, event):
         pass
 
     def on_dclick(self, event):
         self.update_position(event)
-        pt = self.x, self.y
-        block = None
-        for name, blk in self.blocks.items():
-            if blk.hittest(pt):
-                block = blk
-                break
-        if block:
-            block.properties = update_properties(self, block.properties)
+        self.update_hit_objects((self.x, self.y))
+
+        if self.hit_fields:
+            field = self.hit_fields[0]
+            old = field.properties['text']
+            properties = update_properties(self, 'Label', field.properties)
+            new = properties['text']
+            if not old == new:
+                if new in self.blocks:
+                    field.properties['text'] = old
+                else:
+                    self.blocks[new] = self.blocks.pop(old)
+                    self.blocks[new].name = new
+
+
+        elif self.hit_blocks:
+            block = self.hit_blocks[0]
+            label = "Properties for {0}".format(str(block))
+            update_properties(self, label, block.properties)
+
+    def select_object(self, obj):
+        obj.selected = True
+        if not obj in self.selected_objects:
+            self.selected_objects.append(obj)
+
+        if isinstance(obj, Segment):
+            obj.connector.selected = True
+            self.selected_objects.append(obj.connector)
+
+    def deselect_object(self, obj):
+        obj.selected = False
+        if obj in self.selected_objects:
+            self.selected_objects.remove(obj)
+
+    def start_connector(self, connection):
+
+        self.select_object(connection)
+        connector = Connector(connection)
+        self.add_connector(connector)
+        connection.add_connector(connector)
+        self.active_connector = connector
+
+        if isinstance(connection, Port):
+            self.active_connector.add_port(connection)
+        elif isinstance(connection, KneePoint):
+            self.active_connector.add_knee(connection)
+
+    def end_connector(self, connection):
+
+        self.active_connector.add_segment(connection)
+        self.active_connector.partial = False
+        self.deselect_object(connection)
+        connection.add_connector(self.active_connector)
+
+        if isinstance(connection, Port):
+            self.active_connector.add_port(connection)
+        elif isinstance(connection, KneePoint):
+            self.active_connector.add_knee(connection)
+
+        self.active_connector = None
+
+    def remove_hover_all(self):
+        for obj in self.hover_objects:
+            obj.hover = False
+        self.hover_objects = []
+
+    def set_hover(self, obj):
+        obj.hover = True
+        if not obj in self.hover_objects:
+            self.hover_objects.append(obj)
+
+    def clean_up(self):
+        # clean up temporary objs after clicks are processed:
+        for connector in self.connectors:
+            for seg in connector.segments:
+                seg.ghost_knee = None
 
     def on_left_up(self, event):
-        self.drug = False
 
-        if self.mode == Mode.ADD_DEVICE:
+        # reset translation points:
+        self.x0, self.y0 = event.GetLogicalPosition(self.dc)
+        self.x0_object, self.y0_object = self.x0, self.y0
+
+        # get updated position:
+        self.update_position(event)
+        pt = self.x, self.y
+        spt = self.snap(pt)
+
+        # get context:
+        ctrl = event.ControlDown()
+        shft = event.ShiftDown()
+
+        # determine hit objects:
+        self.update_hit_objects(pt)
+        self.remove_hover_all()
+
+        # STATE MACHINE:
+
+        if self.mode == Mode.STANDBY:
+
+            if self.top_obj:
+
+                if not(ctrl or shft):
+                    self.deselect_all()
+
+                if isinstance(self.top_obj, Segment):
+                    self.select_object(self.top_obj.connector)
+                else:
+                    self.select_object(self.top_obj)
+
+            else:
+                self.deselect_all()
+
+        elif self.mode == Mode.ADD_DEVICE:
+
             self.ghost.is_ghost = False
             self.ghost = None
             self.mode = Mode.STANDBY
@@ -692,293 +1042,224 @@ class SchematicWindow(wx.Panel):
 
     def on_left_down(self, event):
 
+        # reset translation points:
         self.x0, self.y0 = event.GetLogicalPosition(self.dc)
         self.x0_object, self.y0_object = self.x0, self.y0
+
+        # get updated position:
         self.update_position(event)
         pt = self.x, self.y
+        spt = self.snap(pt)
+
+        # get context:
         ctrl = event.ControlDown()
         shft = event.ShiftDown()
-        drag = event.Dragging()
+
+        # see what's hit:
+        self.update_hit_objects(pt)
+        self.remove_hover_all()
+
+        # STATE MACHINE:
 
         if self.mode == Mode.STANDBY:
-            port_hit = False
-            block_hit = False
-            field_hit = False
-            connector_hit = False
-            for name, block in self.blocks.items():
-                for name, field in block.fields.items():
-                    if field.hittest(pt):
-                        if field.selected:
-                            field.selected = False
-                            self.selected_objects.remove(field)
-                        else:
-                            field.selected = True
-                            field_hit = True
-                        if not (ctrl or shft):
-                            self.selected_objects = []
-                        self.selected_objects.append(field)
-                    elif not (ctrl or shft):
-                        field.selected = False
 
-                for name, port in block.ports.items():
-                    if port.hittest(pt) and not field_hit:
-                        port_hit = True
-                        port.selected = True
+            if self.top_obj:
+
+                multi_select = ctrl or shft or len(self.selected_objects) > 1
+
+                if isinstance(self.top_obj, (Block, BlockLabel)):
+                    if not multi_select:
+                        self.deselect_all()
+                    self.select_object(self.top_obj)
+
+
+                if isinstance(self.top_obj, KneePoint):
+                    if self.top_obj.selected:
+                        self.start_connector(self.top_obj)
                         self.mode = Mode.CONNECT
-                        port_pt = port.center
-                        connector = Connector(port_pt)
-                        connector.add_port(port)
-                        port.connectors.append(connector)
-                        connector.start_connection_point = port
-                        self.connectors.append(connector)
-                        self.active_connector = connector
                     else:
-                        port.selected = False
-                if block.hittest(pt) and not port_hit and not field_hit:
-                    if block.selected:
-                        block.selected = False
-                        self.selected_objects.remove(block)
-                    else:
-                        block.selected = True
-                        block_hit = True
-                        if not (ctrl or shft):
-                            self.selected_objects = []
-                        self.selected_objects.append(block)
-                elif not (ctrl or shft):
-                    block.selected = False
+                        if not multi_select:
+                            self.deselect_all()
+                        self.select_object(self.top_obj)
 
-            for connector in self.connectors:
-                if (connector.hittest(pt) and not block_hit
-                                          and not port_hit
-                                          and not field_hit):
-                    connector.selected = True
-                    connector_hit = True
-                    if not (ctrl or shft):
-                        self.selected_objects = []
-                    self.selected_objects.append(connector)
-                    self.mode = Mode.ADD_JOINT
-                    self.active_joint = Joint()
-                    for segment in connector.segments:
-                        if segment.hittest(pt):
-                            x1, y1, x2, y2 = segment.line
-                            xs, ys = self.snap(pt)
-                            if x1 == x2:
-                                self.active_joint.position = x1, ys
-                            else:
-                                self.active_joint.position = xs, y1
-                    self.active_joint_conn = connector
-                    connector.joints.append(self.active_joint)
+                elif isinstance(self.top_obj, ConnectionPoint):
+                    self.start_connector(self.top_obj)
+                    self.mode = Mode.CONNECT
 
-                elif not (ctrl or shft):
-                    connector.selected = False
-
-            if not (port_hit or block_hit or field_hit or connector_hit):
+            else:
                 self.deselect_all()
 
+
         elif self.mode == Mode.CONNECT:
-            port_hit = False
-            for name, block in self.blocks.items():
-                for name, port in block.ports.items():
-                    if port.hittest(pt):
-                        port_hit = True
-                        port.selected = False
-                        port.connectors.append(self.active_connector)
-                        self.active_connector.start_connection_point.selected = False
-                        self.mode = Mode.STANDBY
-                        port_pt = port.center
-                        self.active_connector.end = port_pt
-                        self.active_connector.add_port(port)
-                        self.active_connector.end_connection_point = port
-                        self.active_connector = None
-            if not port_hit:
-                self.active_connector.add_knee(pt)
 
-        elif self.mode == Mode.ADD_DEVICE:
-            pass
+            if self.ghost_knee_segment:
+                seg = self.ghost_knee_segment
+                connector = seg.connector
+                knee = seg.ghost_knee
+                connector.split_segment(seg, knee)
+                self.end_connector(knee)
+                self.ghost_knee_segment.ghost_knee = None
+                self.ghost_knee_segment = None
+                self.mode = Mode.STANDBY
 
-        elif self.mode == Mode.ADD_JOINT:
-            if self.active_joint_conn.hittest(pt):
-                pt2 = pt
-                for segment in self.active_joint_conn.segments:
-                    if segment.hittest(pt):
-                        x1, y1, x2, y2 = segment.line
-                        xs, ys = self.snap(pt)
-                        if x1 == x2:
-                            self.active_joint.position = x1, ys
-                            pt2 = x1, ys
-                        else:
-                            self.active_joint.position = xs, y1
-                            pt2 = xs, y1
-                        break
+            elif self.hit_connection_points:
+                connection = self.hit_connection_points[0]
+                self.end_connector(connection)
+                self.mode = Mode.STANDBY
 
-                connector = Connector(pt2)
-                connector.end = pt2
-                self.connectors.append(connector)
-                connector.start_connection_point = self.active_joint
-                connector.joints.append(self.active_joint)
-                connector.hover = True
-                self.active_connector = connector
+            else:
+                knee = KneePoint(self.active_connector, spt)
+                self.active_connector.add_segment(knee)
 
-                self.active_joint.fixed = True
-                self.active_joint_conn.add_knee(pt2)
-                self.active_joint_conn.selected = False
-                self.active_joint_conn = None
-                self.active_joint.selected = True
-                self.active_joint = None
+        self.clean_up()
+        self.Refresh()
 
-                self.mode = Mode.CONNECT
+    def on_right_down(self, event):
+
+        # reset translation points:
+        self.x0, self.y0 = event.GetLogicalPosition(self.dc)
+        self.x0_object, self.y0_object = self.x0, self.y0
+
+        # get updated position:
+        self.update_position(event)
+        pt = self.x, self.y
+        spt = self.snap(pt)
+
+        # get context:
+        ctrl = event.ControlDown()
+        shft = event.ShiftDown()
+
+        # see what's hit:
+        self.update_hit_objects(pt)
+        self.remove_hover_all()
+
+        if self.mode == Mode.STANDBY:
+
+            if self.top_obj:
+                if isinstance(self.top_obj, Segment):
+                    connector = self.top_obj.connector
+                    knee = KneePoint(connector, spt)
+                    connector.split_segment(self.top_obj, knee)
+                elif isinstance(self.top_obj, KneePoint):
+                    connector = self.top_obj.connectors[0]
+                    connector.remove_knee(self.top_obj)
+            else:
+                # context menu goes here...
+                self.deselect_all()
+
+        if self.mode == Mode.CONNECT:
+
+            if self.hit_connection_points:
+                connection = self.hit_connection_points[0]
+                self.end_connector(connection)
+                self.set_hover(connection)
+                self.mode = Mode.STANDBY
+
+            else:
+                self.deselect_all()
+
+        self.clean_up()
 
         self.Refresh()
 
     def on_motion(self, event):
+        """
+        1st: get position and snapped position
+
+        :type event: wx.MouseEvent
+        :return: None
+        """
+
+        # get position:
         self.update_position(event)
         pt = self.x, self.y
-        drag = event.Dragging()
-        left = event.LeftIsDown()
+        spt = pt
+        if SNAP_TO_GRID:
+            spt = self.snap(pt)
+
+        # determine context:
+        dragging = event.Dragging()
+        leftdown = event.LeftIsDown()
+        rightdown = event.RightIsDown()
+
+        # determine hit objects:
+        self.update_hit_objects(pt)
+        self.remove_hover_all()
+
+        # STATE MACHINE:
+
+        if self.mode == Mode.CONNECT:
+
+            x, y = spt
+
+            if ORTHO_CONNECTORS:
+                x0, y0 = self.active_connector.get_last_point()
+                if abs(x - x0) > abs(y - y0):
+                    y = y0
+                else:
+                    x = x0
+
+            self.active_connector.end = (x, y)
+
+            if self.hit_segments:
+                seg = self.hit_segments[0]
+                connector = seg.connector
+                if not connector is self.active_connector:
+                    hpt = seg.closest_hit_point
+                    if hpt:
+                        hpt = self.snap(hpt)
+                        if seg.ghost_knee:
+                            seg.ghost_knee.position = hpt
+                        else:
+                            knee = KneePoint(seg.connector, hpt)
+                            seg.ghost_knee = knee
+                            self.ghost_knee_segment = seg
+
+            elif self.ghost_knee_segment:
+                self.ghost_knee_segment.ghost_knee = None
 
         if self.mode == Mode.ADD_DEVICE:
-            self.ghost.position = self.snap(pt)
 
-        else:
-            if drag and left:
+            self.ghost.position = spt
+
+        elif self.mode == Mode.STANDBY:
+
+            if dragging and leftdown:
+
                 if self.selected_objects:
-                    dx_object = (event.x - self.x0_object) / self.scale
-                    dy_object = (event.y - self.y0_object) / self.scale
-                    self.x0_object = event.x
-                    self.y0_object = event.y
-                    for obj in self.selected_objects:
-                        obj.translate((dx_object, dy_object))
+                    self.translate_selection((event.x, event.y))
                 else:
-                    self.dx += (event.x - self.x0)
-                    self.dy += (event.y - self.y0)
-                    self.x0 = event.x
-                    self.y0 = event.y
+                     self.translate_schematic((event.x, event.y))
 
-            else:  # moving but not dragging (hovering):
-                if self.mode == Mode.ADD_JOINT:
-                    if self.active_joint_conn.hittest(pt):
-                        for segment in self.active_joint_conn.segments:
-                            if segment.hittest(pt):
-                                x1, y1, x2, y2 = segment.line
-                                xs, ys = self.snap(pt)
-                                if x1 == x2:
-                                    self.active_joint.position = x1, ys
-                                else:
-                                    self.active_joint.position = xs, y1
-
-                    else:
-                        self.active_joint_conn.joints.remove(self.active_joint)
-                        self.active_joint_conn = None
-                        self.active_joint = None
-                        self.mode = Mode.STANDBY
-                else:
-                    if self.mode == Mode.CONNECT:
-                        port_hit = False
-                        joint_hit = False
-                        conn_hit = False
-                        for block in self.blocks.values():
-                            for port in block.ports.values():
-                                if port.hittest(pt):
-                                    port.hover = True
-                                    port_hit = True
-                                else:
-                                    port.hover = False
-                        if not port_hit:
-                            for connector in self.connectors:
-                                for joint in connector.joints:
-                                    if joint.hittest(pt):
-                                        joint.hover = True
-                                        joint_hit = True
-                                    else:
-                                        joint.hover = False
-
-                        for connector in self.connectors:
-                            if (connector.hittest(pt) and not port_hit
-                                                      and not joint_hit):
-                                conn_hit = True
-                                self.mode = Mode.ADD_JOINT
-                                self.active_joint = Joint()
-                                self.active_joint_conn = connector
-                                connector.joints.append(self.active_joint)
-
-                                for segment in connector.segments:
-                                    if segment.hittest(pt):
-                                        x1, y1, x2, y2 = segment.line
-                                        xs, ys = self.snap(pt)
-                                        if x1 == x2:
-                                            self.active_joint.position = x1, ys
-                                        else:
-                                            self.active_joint.position = xs, y1
-
-                        self.active_connector.end = self.snap(pt)
-
-                    else:  # mode not connect:
-                        port_hit = False
-                        conn_hit = False
-                        block_hit = False
-                        field_hit = False
-                        joint_hit = False
-                        for block in self.blocks.values():
-                            for name, field in block.fields.items():
-                                if field.hittest(pt):
-                                    field.hover = True
-                                    field_hit = True
-                                else:
-                                    field.hover = False
-                            for port in block.ports.values():
-                                if port.hittest(pt) and not field_hit:
-                                    port.hover = True
-                                    port_hit = True
-                                else:
-                                    port.hover = False
-                            if (block.hittest(pt) and not port_hit
-                                    and not field_hit):
-                                block.hover = True
-                                block_hit = True
-                            else:
-                                block.hover = False
-
-                        for connector in self.connectors:
-
-                            for joint in connector.joints:
-                                if (joint.hittest(pt) and not block_hit
-                                                      and not port_hit
-                                                      and not field_hit):
-                                    joint.hover = True
-                                    joint_hit = True
-                                else:
-                                    joint.hit = False
-
-                            if (connector.hittest(pt) and not block_hit
-                                                      and not port_hit
-                                                      and not field_hit
-                                                      and not joint_hit):
-                                conn_hit = True
-
-                                if connector.selected:
-                                    if not self.mode == Mode.ADD_JOINT:
-                                        self.mode = Mode.ADD_JOINT
-                                        self.active_joint = Joint()
-                                        self.active_joint_conn = connector
-                                        connector.joints.append(self.active_joint)
-                                    for segment in connector.segments:
-                                        if segment.hittest(pt):
-                                            x1, y1, x2, y2 = segment.line
-                                            xs, ys = self.snap(pt)
-                                            if x1 == x2:
-                                                self.active_joint.position = x1, ys
-                                            else:
-                                                self.active_joint.position = xs, y1
-
-                                else:
-                                    connector.hover = True
-                            else:
-                                connector.hover = False
-
-                        if not conn_hit and self.mode == Mode.ADD_JOINT:
-                            self.mode = Mode.STANDBY
+            elif self.top_obj:
+                self.set_hover(self.top_obj)
 
         self.Refresh()
+
+    def translate_schematic(self, offset):
+        x, y = offset
+        self.dx += (x - self.x0)
+        self.dy += (y - self.y0)
+        self.x0 = x
+        self.y0 = y
+
+    def translate_selection(self, new_pt):
+        x, y = new_pt
+        dx = (x - self.x0_object) / self.scale
+        dy = (y - self.y0_object) / self.scale
+        self.x0_object = x
+        self.y0_object = y
+        for obj in self.selected_objects:
+            obj.translate((dx, dy))
+            if isinstance(obj, Connector):
+                for knee in obj.knees:
+                    knee.translate((dx, dy))
+        self.auto_connect()
+
+    def move_selection_by(self, delta):
+        for obj in self.selected_objects:
+            obj.translate(delta)
+        self.auto_connect()
 
     def on_scroll(self, event):
         self.update_position(event)
@@ -989,6 +1270,7 @@ class SchematicWindow(wx.Panel):
         self.Refresh()
 
     def on_key_up(self, event):
+
         code = event.GetKeyCode()
 
         if code == wx.WXK_ESCAPE:
@@ -999,6 +1281,9 @@ class SchematicWindow(wx.Panel):
             self.deselect_all()
 
         elif code == wx.WXK_DELETE or code == wx.WXK_BACK:
+
+            # delete selected objects:
+
             for obj in self.selected_objects:
                 if isinstance(obj, Block):
                     to_del = None
@@ -1013,38 +1298,109 @@ class SchematicWindow(wx.Panel):
                         for port in block.ports.values():
                             if obj in port.connectors:
                                 port.connectors.remove(obj)
+                    for connector in self.connectors:
+                        for connection in connector.get_connectoin_points():
+                            if obj in connection.connectors:
+                                connection.connectors.remove(obj)
+                elif isinstance(obj, KneePoint):
+                    connector = obj.connectors[0]
+                    connector.remove_knee(obj)
+
+            self.deselect_all()
+
+        # navigation:
 
         elif code == wx.WXK_UP or code == wx.WXK_NUMPAD_UP:
-            for obj in self.selected_objects:
-                obj.translate((0, -MOVE_DELTA))
+            self.move_selection_by((0, -MOVE_DELTA))
 
         elif code == wx.WXK_DOWN or code == wx.WXK_NUMPAD_DOWN:
-            for obj in self.selected_objects:
-                obj.translate((0, MOVE_DELTA))
+            self.move_selection_by((0, MOVE_DELTA))
 
         elif code == wx.WXK_LEFT or code == wx.WXK_NUMPAD_LEFT:
-            for obj in self.selected_objects:
-                obj.translate((-MOVE_DELTA, 0))
+            self.move_selection_by((-MOVE_DELTA, 0))
 
         elif code == wx.WXK_RIGHT or code == wx.WXK_NUMPAD_RIGHT:
-            for obj in self.selected_objects:
-                obj.translate((MOVE_DELTA, 0))
+            self.move_selection_by((MOVE_DELTA, 0))
+
+        # rotate:
 
         elif code == ord('R'):
             if self.mode == Mode.ADD_DEVICE:
                 self.ghost.rotate(90)
-
+            elif self.mode == Mode.STANDBY:
+                for obj in self.selected_objects:
+                    if isinstance(obj, Block):
+                        obj.rotate(90)
         self.Refresh()
-
-    def on_right_down(self, event):
-        pass
 
     def on_paint(self, event):
         self.dc = wx.PaintDC(self)
         self.draw(self.dc)
 
+    def update_hit_objects(self, pt):
+
+        self.hit_objects = []
+        self.hit_connection_points = []
+
+        self.top_obj = None
+
+        hit_blocks = {}
+        hit_ports = {}
+        hit_fields = {}
+        hit_segments = {}
+        hit_knees = {}
+
+        # determine everything that's hit:
+        for block in self.blocks.values():
+            if block.hittest(pt):
+                hit_blocks[block.zorder] = block
+            for port in block.ports.values():
+                if port.hittest(pt):
+                    hit_ports[port.zorder] = port
+            for field in block.fields.values():
+                if field.hittest(pt):
+                    hit_fields[field.zorder] = field
+        for connector in self.connectors:
+            for segment in connector.segments:
+                if segment.hittest(pt):
+                    hit_segments[segment.zorder] = segment
+            for knee in connector.knees:
+                if knee:
+                    if knee.hittest(pt):
+                        hit_knees[knee.zorder] = knee
+
+
+        # sort by zorder and dump into member lists:
+
+        self.hit_ports = [obj for (z, obj) in
+                          reversed(sorted(hit_ports.items()))]
+
+        self.hit_blocks = [obj for (z, obj) in
+                           reversed(sorted(hit_blocks.items()))]
+
+        self.hit_fields = [obj for (z, obj) in
+                           reversed(sorted(hit_fields.items()))]
+
+        self.hit_segments = [obj for (z, obj) in
+                             reversed(sorted(hit_segments.items()))]
+
+        self.hit_knees = [obj for (z, obj) in
+                               reversed(sorted(hit_knees.items()))]
+
+        # the order these lists are added is key:
+
+        self.hit_objects = (self.hit_fields +
+                            self.hit_ports +
+                            self.hit_blocks +
+                            self.hit_knees +
+                            self.hit_segments)
+
+        self.hit_connection_points = (self.hit_ports + self.hit_knees)
+
+        if self.hit_objects:
+            self.top_obj = self.hit_objects[0]
+
     def update_position(self, event):
-        self.x, self.y = event.GetLogicalPosition(self.dc)
         self.x = event.GetX()
         self.y = event.GetY()
         self.x = (self.x - self.dx) / self.scale
@@ -1105,21 +1461,91 @@ class SchematicWindow(wx.Panel):
         return bounding, center
 
     def snap(self, position):
-        x, y = position
-        dx = x % GRID_SIZE
-        dy = y % GRID_SIZE
-        if dx > GRID_SIZE / 2:
-            x += GRID_SIZE - dx
+        if position:
+            x, y = position
+            dx = x % GRID_SIZE
+            dy = y % GRID_SIZE
+            if dx > GRID_SIZE / 2:
+                x += GRID_SIZE - dx
+            else:
+                x -= dx
+            if dy > GRID_SIZE / 2:
+                y += GRID_SIZE - dy
+            else:
+                y -= dy
+            return x, y
         else:
-            x -= dx
-        if dy > GRID_SIZE / 2:
-            y += GRID_SIZE - dy
-        else:
-            y -= dy
+            return None
 
-        return x, y
+    def consolidate_connection_points(self):
+        pass
 
-    def render_block(self, block, gc):
+    def auto_connect(self):
+        tol = GRID_SIZE / 2
+
+        # auto connect port to port:
+
+        portmap = {}
+        for block in self.blocks.values():
+            for port in block.ports.values():
+                x, y = port.center
+                if (x, y) in portmap:
+                    portmap[(x, y)].append(port)
+                else:
+                    portmap[(x, y)] = [port]
+
+        for pt, ports in portmap.items():
+            if len(ports) == 2:
+                p1, p2 = ports
+                connected = False
+                for connector1 in p1.connectors:
+                    for connector2 in p2.connectors:
+                        if connector1 is connector2:
+                            connected = True
+                            break
+                    if connected:
+                        break
+                if not connected:
+                    self.add_auto_connector(p1, p2)
+
+        # auto connect port to connector:
+
+        for block in self.blocks.values():
+            for port in block.ports.values():
+                pass
+
+    def add_connector(self, connector):
+        if not connector in self.connectors:
+            self.connectors.append(connector)
+
+    def add_auto_connector(self, connection1, connection2):
+
+        pt1 = connection1.center
+        connector = Connector(pt1)
+        self.add_connector(connector)
+        connection1.add_connector(connector)
+        connector.start_connection_point = connection1
+
+        if isinstance(connection1, Port):
+            connector.add_port(connection1)
+        elif isinstance(connection1, KneePoint):
+            connector.add_knee(connection1)
+
+        connection2.add_connector(connector)
+        end = connection2.center
+
+        if isinstance(connection2, Port):
+            connector.add_port(connection2)
+        elif isinstance(connection2, KneePoint):
+            connector.add_knee(connection2)
+
+        connector.end_connection_point = connection2
+        connector.end = end
+
+        connection1.add_connector(connector)
+        connection2.add_connector(connector)
+
+    def draw_block(self, block, gc):
 
         font = wx.Font(FONT_SIZE, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL,
                        wx.FONTWEIGHT_BOLD, False, 'Courier 10 Pitch')
@@ -1153,11 +1579,19 @@ class SchematicWindow(wx.Panel):
                 x2, y2 = point
                 path.AddLineToPoint(x2, y2)
 
+        hd_rects = []
+
         for rect in block.rects:
-            path.AddRoundedRectangle(*rect)
+            if len(rect) == 2:
+                hd_rects.append(rect)
+            else:
+                path.AddRoundedRectangle(*rect)
 
         for circle in block.circles:
-            path.AddCircle(*circle)
+            if len(circle) == 3:
+                path.AddCircle(*circle)
+            elif len(circle) == 4:
+                path.AddEllipse(*circle)
 
         for arc in block.arcs:
             x, y, r, ang1, ang2, clockwise = arc
@@ -1169,17 +1603,32 @@ class SchematicWindow(wx.Panel):
         path.Transform(matrix)
         gc.StrokePath(path)
 
+        for rect, (stroke, fill) in hd_rects:
+            path = gc.CreatePath()
+            path.AddRoundedRectangle(*rect)
+            path.Transform(matrix)
+            if fill:
+                gc.SetBrush(wx.Brush(fill))
+                gc.FillPath(path)
+            if stroke:
+                gc.SetPen(wx.Pen(stroke, 1))
+                gc.StrokePath(path)
+
         if block.plot_curves:
-            pen = wx.Pen(DEVICE_COLOR, 1)
-            path2 = gc.CreatePath()
-            gc.SetPen(pen)
-            for curve in block.plot_curves:
-                path2.MoveToPoint(curve[0])
+
+            for plot_curve in block.plot_curves:
+                curve, color = plot_curve
+                if not color:
+                    color = DEVICE_COLOR
+                pen = wx.Pen(color, 1)
+                path = gc.CreatePath()
+                gc.SetPen(pen)
+                path.MoveToPoint(curve[0])
                 for point in curve[1:]:
                     x2, y2 = point
-                    path2.AddLineToPoint(x2, y2)
-            path2.Transform(matrix)
-            gc.StrokePath(path2)
+                    path.AddLineToPoint(x2, y2)
+                path.Transform(matrix)
+                gc.StrokePath(path)
 
         block.bounding_rects[0], block.center = self.get_bounding(path)
 
@@ -1202,8 +1651,8 @@ class SchematicWindow(wx.Panel):
             x, y, w, h = block.bounding_rects[0]
             xo, yo = field.position
             xt, yt = x + xo, y + yo
-            gc.DrawText(field.text, xt, yt)
-            w, h, d, e = gc.GetFullTextExtent(field.text)
+            gc.DrawText(field.get_text(), xt, yt)
+            w, h, d, e = gc.GetFullTextExtent(field.get_text())
             field.bounding_rects[0] = (xt, yt, w, h)
             field.center = (xt + w * 0.5, yt + h * 0.5)
 
@@ -1248,17 +1697,18 @@ class SchematicWindow(wx.Panel):
                 force_show = False
 
             for connector in port.connectors:
-                if connector.selected:
-                    gc.SetPen(self.pen_select)
-                    gc.SetBrush(self.brush_select)
-                    gf = gc.CreateFont(font, SELECT_COLOR)
-                    force_show = True
+                for seg in connector.segments:
+                    if seg.selected:
+                        gc.SetPen(self.pen_select)
+                        gc.SetBrush(self.brush_select)
+                        gf = gc.CreateFont(font, SELECT_COLOR)
+                        force_show = True
 
-                elif connector.hover:
-                    gc.SetPen(self.pen_hover)
-                    gc.SetBrush(self.brush_hover)
-                    gf = gc.CreateFont(font, HOVER_COLOR)
-                    force_show = True
+                    elif seg.hover:
+                        gc.SetPen(self.pen_hover)
+                        gc.SetBrush(self.brush_hover)
+                        gf = gc.CreateFont(font, HOVER_COLOR)
+                        force_show = True
 
 
             gc.SetFont(gf)
@@ -1270,7 +1720,7 @@ class SchematicWindow(wx.Panel):
             path.Transform(matrix)
 
             if len(port.connectors) > 1 or force_show:
-                gc.StrokePath(path)
+                # gc.StrokePath(path)
                 gc.FillPath(path)
 
             path = gc.CreatePath()
@@ -1278,16 +1728,21 @@ class SchematicWindow(wx.Panel):
             path.Transform(matrix)
             port.bounding_rects[0], port.center = self.get_bounding(path)
 
-    def render_connector(self, connector, gc):
+    def draw_connector(self, connector, gc):
 
-        connector.start = connector.start_connection_point.center
-        if connector.end_connection_point:
-            connector.end = connector.end_connection_point.center
+        segment_hover = False
+        segment_selected = False
 
-        if connector.selected:
+        for segment in connector.segments:
+            if segment.hover:
+                segment_hover = True
+            if segment.selected:
+                segment_selected = True
+
+        if segment_selected or connector.selected:
             gc.SetPen(self.pen_select)
             gc.SetBrush(self.brush_select)
-        elif connector.hover:
+        elif segment_hover:
             gc.SetPen(self.pen_hover)
             gc.SetBrush(self.brush_hover)
         else:
@@ -1295,88 +1750,53 @@ class SchematicWindow(wx.Panel):
             gc.SetBrush(self.brush)
 
         path = gc.CreatePath()
-        points = []
+        path.MoveToPoint(connector.start_connection_point.center)
 
-        path.MoveToPoint(connector.start)
-        points.append(connector.start)
+        for seg in connector.segments:
+            p1, p2 = seg
+            path.AddLineToPoint(self.snap(p2))
 
-        if ORTHO_CONNECTORS:
-            x1, y1 = connector.start
-            for knee in connector.knees:
-                x2, y2 = self.snap(knee)
-
-                path.AddLineToPoint(x1, y2)
-                points.append((x1, y2))
-
-                path.AddLineToPoint(x2, y2)
-                points.append((x2, y2))
-
-                x1, y1 = x2, y2
-
-            x2, y2 = connector.end
-            path.AddLineToPoint(x1, y2)
-            points.append((x1, y2))
-
-        else:
-            for knee in connector.knees:
-                x2, y2 = self.snap(knee)
-                path.AddLineToPoint(x2, y2)
-                points.append((x2, y2))
-
-        path.AddLineToPoint(connector.end)
-        points.append(connector.end)
+        if connector.partial:
+            path.AddLineToPoint(*connector.end)
 
         gc.StrokePath(path)
 
-        connector.bounding_rects = []
-        connector.segments = []
+        # draw knees:
 
-        if points:
-            m = CONNECTOR_HIT_MARGIN
-            x1, y1 = points[0]
-            for x2, y2 in points[1:]:
-                x, y = min(x1, x2), min(y1, y2)
-                w, h = max(x1, x2) - x, max(y1, y2) - y
-                box = x - m, y - m, w + m * 2, h + m * 2
+        for knee in connector.knees:
 
-                segments = Segment()
-                segments.line = (x1, y1, x2, y2)
-                segments.bounding_rects[0] = box
+            draw = False
 
-                if x1 == x2:
-                    segments.orientation = Orientation.VERTICAL
-                else:
-                    segments.orientation = Orientation.HORIZONTAL
-
-                connector.segments.append(segments)
-                connector.bounding_rects.append(box)
-
-                x1, y1 = x2, y2
-
-        # draw joints:
-
-        for joint in connector.joints:
-
-            path = gc.CreatePath()
-
-            if joint.selected:
+            if knee.selected or segment_selected:
                 gc.SetPen(self.pen_select)
                 gc.SetBrush(self.brush_select)
-            elif joint.hover:
+                draw = True
+
+            elif knee.hover or segment_hover:
                 gc.SetPen(self.pen_hover)
                 gc.SetBrush(self.brush_hover)
-            else:
-                gc.SetPen(self.pen)
-                gc.SetBrush(self.brush)
+                draw = True
 
-            (x, y), r, m = joint.position, PORT_RADIUS, PORT_HIT_MARGIN
-            path.MoveToPoint(x, y)
-            path.AddCircle(x, y, r)
-            joint.bounding_rects[0] = (x-r-m, y-r-m, (r+m)*2, (r+m)*2)
-            joint.center = (x, y)
+            if len(knee.connectors) > 1 or draw:
+                path = gc.CreatePath()
 
-            gc.StrokePath(path)
-            gc.FillPath(path)
+                (x, y), r, m = self.snap(knee), PORT_RADIUS, PORT_HIT_MARGIN
+                path.MoveToPoint(x, y)
+                path.AddCircle(x, y, r)
+                knee.bounding_rects[0] = (x-r-m, y-r-m, (r+m)*2, (r+m)*2)
+                knee.center = (x, y)
+
+                #gc.StrokePath(path)
+                gc.FillPath(path)
+
+        # draw ghost knee point:
+        for seg in connector.segments:
+            if seg.ghost_knee:
+                path = gc.CreatePath()
+                (x, y), r = seg.ghost_knee.position, PORT_RADIUS
+                path.MoveToPoint(x, y)
+                path.AddCircle(x, y, r)
+                gc.FillPath(path)
 
     def draw(self, dc):
         w, h = self.dc.GetSize()
@@ -1399,69 +1819,108 @@ class SchematicWindow(wx.Panel):
             gc.FillPath(path)
 
         # schematic:
-        for connector in self.connectors:
-            self.render_connector(connector, gc)
-
         for name, block in self.blocks.items():
-            self.render_block(block, gc)
+            self.draw_block(block, gc)
+
+        for connector in self.connectors:
+            self.draw_connector(connector, gc)
+
+
+        # debug: show hit boxes:
+
+        ALL_BOXES = False
+        ONE_BOX = True
+
+        if ALL_BOXES:
+            icolor = 0
+            colors = [wx.Colour(200, 100, 100),
+                      wx.Colour(100, 200, 100),
+                      wx.Colour(100, 100, 200),
+                      wx.Colour(150, 50, 50),
+                      wx.Colour(50, 150, 50),
+                      wx.Colour(50, 50, 150)]
+
+            line_width = 2
+            for obj in self.hit_objects:
+                path = gc.CreatePath()
+                for rect in obj.bounding_rects:
+                    x, y, w, h = rect
+                    path.AddRoundedRectangle(x, y, w, h, 2)
+                gc.SetPen(wx.Pen(colors[icolor], line_width))
+                gc.StrokePath(path)
+                icolor += 1
+                icolor = min(icolor, len(colors)-1)
+
+        elif ONE_BOX:
+            if self.top_obj:
+                path = gc.CreatePath()
+                for rect in self.top_obj.bounding_rects:
+                    x, y, w, h = rect
+                    path.AddRoundedRectangle(x, y, w, h, 2)
+                gc.SetPen(wx.Pen(wx.Colour(200, 100, 100), 2))
+                gc.StrokePath(path)
 
     def build_netlist(self):
 
         groups = [[], ]
 
+        connector_groups = []
+
+        # first, make groups of all the connected connectors
+        connector_groups = []
         for connector in self.connectors:
-            start = connector.start_connection_point
-            end = connector.end_connection_point
+            grp = []
+            for connection in connector.get_connectoin_points():
+                for connector in connection.connectors:
+                    grp.append(connector)
+            grp = list(set(grp))
+            connector_groups.append(grp)
 
-            istart = -1
-            iend = -1
+        combine = 1
 
-            if start.is_ground or end.is_ground:
-                if start not in groups[0]:
-                    groups[0].append(start)
-                if end not in groups[0]:
-                    groups[0].append(end)
-
-            for i, group in enumerate(groups):
-                if start in group:
-                    istart = i
-                if end in group:
-                    iend = i
-
-            if istart < 0 and iend < 0:
-                groups.append([start, end])
-
-            elif istart < 0 and iend >= 0:
-                groups[iend].append(start)
-
-            elif istart >= 0 and iend < 0:
-                groups[istart].append(end)
-
-            elif istart >= 0 and iend >= 0:
-                if istart == 0:
-                    groups[0].extend(groups[iend][:])
-                    del groups[iend]
-                elif iend == 0:
-                    groups[0].extend(groups[istart][:])
-                    del groups[istart]
-                else:
-                    groups[istart].extend(groups[iend][:])
-                    del groups[iend]
-
-        for i, group in enumerate(groups):
-            st = set(group)
-            groups[i] = list(st)
-
-        # now add all unconnected ports to ground group:
-        for block in self.blocks.values():
-            for port in block.ports.values():
-                found = False
-                for group in groups:
-                    if port in group:
-                        found = True
+        while combine:
+            combine = None
+            for i in range(len(connector_groups)-1):
+                for j in range(i+1, len(connector_groups)):
+                    for connector1 in connector_groups[i]:
+                        for connector2 in connector_groups[j]:
+                            if connector1 is connector2:
+                                combine = (i, j)
+                                break
+                        if combine:
+                            break
+                    if combine:
                         break
-                if not found:
-                    groups[0].append(port)
+                if combine:
+                    break
+
+            if combine:
+                i, j = combine
+                connector_groups[i] += connector_groups[j]
+                del connector_groups[j]
+
+        for i, grp in enumerate(connector_groups):
+            connector_groups[i] = list(set(grp))
+
+        a = 6
+
+        # now build port groups:
+
+        port_groups = [[], ]
+
+        for connector_group in connector_groups:
+            is_ground = False
+            port_group = []
+            for connector in connector_group:
+                for port in connector.ports:
+                    port_group.append(port)
+                    if port.is_ground:
+                        is_ground = True
+            port_group = list(set(port_group))
+            if is_ground:
+                port_groups[0] += port_group
+            else:
+                port_groups.append(port_group)
 
         netlist = Netlist(self.name)
 
@@ -1469,7 +1928,7 @@ class SchematicWindow(wx.Panel):
             if not block.is_ground:
                 nodemap = {}
                 for key, port in block.ports.items():
-                    for i, group in enumerate(groups):
+                    for i, group in enumerate(port_groups):
                         if port in group:
                             nodemap[port.index] = i
                 sort = sorted(nodemap.items())
@@ -1528,33 +1987,34 @@ class MainFrame(gui.MainFrame):
         self.ntb_main.AddPage(schem, name)
 
     def run(self):
-        netlist = self.active_schem.build_netlist()
+        if self.active_schem:
+            netlist = self.active_schem.build_netlist()
 
-        settings = self.active_schem.sim_settings
+            settings = self.active_schem.sim_settings
 
-        dt = settings['dt']
-        tmax = settings['tmax']
-        maxitr = settings['maxitr']
-        tol = settings['tol']
-        voltages = settings['voltages']
-        currents = settings['currents']
+            dt = settings['dt']
+            tmax = settings['tmax']
+            maxitr = settings['maxitr']
+            tol = settings['tol']
+            voltages = settings['voltages']
+            currents = settings['currents']
 
-        netlist.trans(dt, tmax)
+            netlist.trans(dt, tmax)
 
-        for block in self.active_schem.blocks.values():
-            block.end()
+            for block in self.active_schem.blocks.values():
+                block.end()
 
-        chans = []
+            chans = []
 
-        for v in voltages.split():
-            chans.append(Voltage(int(v.strip())))
+            for v in voltages.split():
+                chans.append(Voltage(int(v.strip())))
 
-        for i in currents.split():
-            chans.append(Current(i.strip()))
+            for i in currents.split():
+                chans.append(Current(i.strip()))
 
-        netlist.plot(*chans)
+            netlist.plot(*chans)
 
-        self.active_schem.Refresh()
+            self.active_schem.Refresh()
 
     def add_gadget(self, type_):
         if self.active_schem:
@@ -1639,18 +2099,51 @@ class MainFrame(gui.MainFrame):
     def on_add_vscope(self, event):
         self.add_gadget("VScope")
 
+    def on_add_vscope3(self, event):
+        self.add_gadget("VScope3")
+
     def on_add_iscope(self, event):
         self.add_gadget("IScope")
 
     def on_setup(self, event):
         self.active_schem.sim_settings = update_properties(self,
-                                                           self.active_schem.sim_settings)
+                "Simulation Setup", self.active_schem.sim_settings)
 
     def on_run(self, event):
         self.run()
 
     def on_page_close(self, event):
         index = event.GetSelection()
+
+
+def distance(line, point):
+    (cx, cy), ((ax, ay), (bx, by)) = point, line
+    r_num = (cx - ax) * (bx - ax) + (cy - ay) * (by - ay)
+    r_den = (bx - ax) * (bx - ax) + (by - ay) * (by - ay)
+    if r_den > 0.0:
+        r = r_num / r_den
+        px, py = ax + r * (bx - ax), ay + r * (by - ay)
+        s = ((ay - cy) * (bx - ax) - (ax - cx) * (by - ay) ) / r_den
+
+        xx = px
+        yy = py
+
+        if (r >= 0) and (r <= 1):
+            dseg = abs(s) * math.sqrt(r_den)
+        else:
+            dist1 = (cx - ax) * (cx - ax) + (cy - ay) * (cy - ay)
+            dist2 = (cx - bx) * (cx - bx) + (cy - by) * (cy - by)
+            if dist1 < dist2:
+                xx = ax
+                yy = ay
+                dseg = math.sqrt(dist1)
+            else:
+                xx = bx
+                yy = by
+                dseg = math.sqrt(dist2)
+        return (xx, yy), dseg
+    else:
+        return point, float('inf')
 
 
 # region Main:
@@ -1662,9 +2155,9 @@ if __name__ == '__main__':
     frame.SetPosition((100, 100))
     #frame.new_schem()
 
-    #frame.open_schematic("Users/josephmhood/Documents/Cir1.sch")
-    frame.open_schematic("C:/Users/josephmhood/Desktop/Cir1.sch")
-    frame.run()
+    frame.open_schematic("/Users/josephmhood/Documents/Cir1.sch")
+    #frame.open_schematic("C:/Users/josephmhood/Desktop/Cir1.sch")
+    #frame.run()
 
     frame.Show()
     app.MainLoop()

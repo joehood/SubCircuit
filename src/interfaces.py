@@ -117,6 +117,9 @@ class Device(object):
         """
         pass
 
+    def post_step(self, dt, t):
+        pass
+
     def minor_step(self, dt, t, k):
         """Virtual method. May be implemented by derived class.
         Called before each Newton interation. If device does not implement

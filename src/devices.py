@@ -852,9 +852,46 @@ class VScope(SignalDevice):
         # self.data = np.zeros(n)
 
     def step(self, dt, t):
+        pass
+
+    def post_step(self, dt, t):
         v = self.get_across(0, 1)
         self.time.append(t)
         self.data.append(v)
+
+
+class VScope3(SignalDevice):
+    def __init__(self, nodes, **parameters):
+        SignalDevice.__init__(self, nodes, **parameters)
+        self.time = []
+        self.data1 = []
+        self.data2 = []
+        self.data3 = []
+
+    def connect(self):
+        n1, n2, n3, nn = self.nodes
+        self.port2node = {0: self.get_node_index(n1),
+                          1: self.get_node_index(n2),
+                          2: self.get_node_index(n3),
+                          3: self.get_node_index(nn)}
+
+    def update(self):
+        pass
+
+    def start(self, dt):
+        pass
+
+    def step(self, dt, t):
+        pass
+
+    def post_step(self, dt, t):
+        v1 = self.get_across(0, 3)
+        v2 = self.get_across(1, 3)
+        v3 = self.get_across(2, 3)
+        self.time.append(t)
+        self.data1.append(v1)
+        self.data2.append(v2)
+        self.data3.append(v3)
 
 
 class IScope(MNADevice, CurrentSensor):
@@ -877,6 +914,9 @@ class IScope(MNADevice, CurrentSensor):
         self.jac[2, 1] = -1.0
 
     def step(self, dt, t):
+        pass
+
+    def post_step(self, dt, t):
         i = self.get_across(2)
         self.time.append(t)
         self.data.append(i)
