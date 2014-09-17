@@ -2,7 +2,7 @@ PySpyce Circuit Simulator
 =========================
 
 
-![alt text](https://github.com/josephmhood/PySpyce/blob/master/Artwork/screen_3.png "")
+![alt text](https://github.com/josephmhood/PySpyce/blob/master/Artwork/screenshot_6.png "")
 
 
 Python Implementation of SPICE Circuit Simulator. 
@@ -21,9 +21,9 @@ PySpyce allows the creation of netlists through a schematic editor or directly w
 
 ###Graphical Example:###
 
-![alt text](https://github.com/josephmhood/PySpyce/blob/master/Artwork/screen_4.png "")
+![alt text](https://github.com/josephmhood/PySpyce/blob/master/Artwork/screenshot_7.png "")
 
-![alt text](https://github.com/josephmhood/PySpyce/blob/master/Artwork/screen_2.png "")
+![alt text](https://github.com/josephmhood/PySpyce/blob/master/Artwork/screenshot_8.png "")
 
 
 ###Programmatic Netlist Development:###
