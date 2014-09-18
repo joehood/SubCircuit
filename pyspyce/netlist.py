@@ -7,7 +7,8 @@ from scipy.sparse import csc_matrix as smatrix
 import numpy as np
 import numpy.linalg as la
 
-from devices import *
+import devices
+import interfaces as inter
 import simulator as sim
 
 
@@ -53,7 +54,7 @@ class Netlist():
 
         for x_name, x_device in self.devices.items():
 
-            if isinstance(x_device, X):  # if subckt instance device:
+            if isinstance(x_device, devices.X):  # if subckt instance device:
 
                 subckt_name = x_device.subckt
 
@@ -122,7 +123,7 @@ class Netlist():
         self.jac[:, :] = 0.0
         self.bequiv[:] = 0.0
         for device in self.devices.values():
-            if isinstance(device, MNADevice):
+            if isinstance(device, inter.MNADevice):
                 for pi, ni in device.port2node.items():
                     self.bequiv[ni] += device.bequiv[pi]
                     for pj, nj in device.port2node.items():

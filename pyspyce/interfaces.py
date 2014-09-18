@@ -1,12 +1,22 @@
 """interfaces.py"""
 
-import numpy
+import math
+import numpy as np
+
+
+class DeviceFamilies(object):
+    ELEMENTARY = 0
+    INDEPENDANT_SOURCES = 1
+    LINEAR_DEPENDANT_SOURCES = 2
+    NONLINEAR_DEPENDANT_SOURCES = 3
+    SEMICONDUCTORS = 4
+    TRANSMISSION_LINES = 5
 
 
 class Device(object):
     """A Device (circuit element) base object."""
 
-    def __init__(self, nodes, **parameters):
+    def __init__(self, nodes, family=None, **parameters):
         """Creates a device base.
         :param name: Mandatory name, unique within the parent subcircuit.
         :param nnodes: number of nodes for this device (including internal)
@@ -18,6 +28,8 @@ class Device(object):
         else:
             self.nodes = list(nodes)
         self.nnodes = len(self.nodes)
+        self.family = family
+
         self.port2node = None
         self.name = None
         self.netlist = None
@@ -149,8 +161,8 @@ class MNADevice(Device):
         Device.__init__(self, nodes, **parameters)
         self.nodes = nodes
         self.nnodes = len(nodes) + internals
-        self.jac = numpy.zeros((self.nnodes, self.nnodes))
-        self.bequiv = numpy.zeros((self.nnodes, 1))
+        self.jac = np.zeros((self.nnodes, self.nnodes))
+        self.bequiv = np.zeros((self.nnodes, 1))
 
     def get_model(self, mname):
         """Provides convenient access to all models in the subcircuit

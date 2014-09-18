@@ -7,7 +7,7 @@ from interfaces import *
 
 try:
     import wx
-    from src import editor
+    import editor
 except:
     pass
 
