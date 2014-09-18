@@ -1,8 +1,8 @@
 """D (Diode) device."""
 
 import math
-import interfaces as inter
-import sandbox as sb
+import pyspyce.interfaces as inter
+import pyspyce.sandbox as sb
 
 
 class D(inter.MNADevice):
@@ -98,7 +98,9 @@ class D(inter.MNADevice):
 class DBlock(sb.Block):
     friendly_name = "Diode"
     family = "Semiconductors"
+    label = "D"
     engine = D
+
     def __init__(self, name):
         sb.Block.__init__(self, name, D)
 

@@ -7,9 +7,9 @@ from scipy.sparse import csc_matrix as smatrix
 import numpy as np
 import numpy.linalg as la
 
-import devices
-import interfaces as inter
-import simulator as sim
+from devices import *
+import pyspyce.interfaces as inter
+import pyspyce.simulator as sim
 
 
 class Netlist():

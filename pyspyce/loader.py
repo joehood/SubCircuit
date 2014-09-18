@@ -1,0 +1,34 @@
+"""Tools for dynamically loading device definitions."""
+
+import inspect
+import os
+import sandbox as sb
+import interfaces as inter
+
+
+def import_devices(package="devices"):
+    """Imports devices and block classes into this module's namespace.
+    :param package: local package to search in
+    :return: None
+    """
+    devices = {}
+    blocks = {}
+
+    modpaths = os.listdir(package)
+    devicemods = {}
+
+    for modpath in modpaths:
+        name, ext = modpath.split(".")
+        if not name == "__init__" and ext == "py":
+            devicemods[name] = __import__(package + "." + name, fromlist=[name])
+
+    for name, mod in devicemods.items():
+        clsdefs = inspect.getmembers(mod, inspect.isclass)
+        for clsname, cls in clsdefs:
+            if issubclass(cls, sb.Block):
+                friendly_name = cls.friendly_name
+                blocks[friendly_name] = cls
+            elif issubclass(cls, inter.Device):
+                devices[clsname] = cls
+
+    return blocks, devices

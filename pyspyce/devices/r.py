@@ -1,7 +1,7 @@
 """R (resistor or semiconductor resistor) device."""
 
-import interfaces as inter
-import sandbox as sb
+import pyspyce.interfaces as inter
+import pyspyce.sandbox as sb
 
 
 class R(inter.MNADevice):
@@ -63,6 +63,7 @@ class RBlock(sb.Block):
     """Schematic graphical inteface for R device."""
     friendly_name = "Resistor"
     family = "Elementary"
+    label = "R"
     engine = R
 
     def __init__(self, name):

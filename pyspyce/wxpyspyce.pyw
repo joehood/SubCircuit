@@ -4,17 +4,15 @@ from __future__ import print_function, division
 import pickle
 import os
 import math
-import inspect
 from copy import deepcopy as clone
-from os import path
 
 import wx
 
-import netlist as net
-import interfaces as inter
-import sandbox as sb
-import gui
-from devices_old import *
+import pyspyce.netlist as net
+import pyspyce.interfaces as inter
+import pyspyce.sandbox as sb
+import pyspyce.gui as gui
+import pyspyce.loader as load
 
 
 # region globals:
@@ -25,379 +23,11 @@ blocks = {}
 # endregion
 
 
-class CBlock(sb.Block):
-    def __init__(self, name):
-        # init super:
-        sb.Block.__init__(self, name, C)
-
-        # ports:
-        self.ports['positive'] = sb.Port(self, 0, (60, 0))
-        self.ports['negative'] = sb.Port(self, 1, (60, 100))
-
-        # properties:
-        self.properties['Capacitance (F)'] = 0.1
-
-        # leads:
-        self.lines.append(((60, 0), (60, 40)))
-        self.lines.append(((60, 60), (60, 100)))
-
-        # plates:
-        self.lines.append(((40, 40), (80, 40)))
-        self.lines.append(((40, 60), (80, 60)))
-
-    def get_engine(self, nodes):
-        return C(nodes, self.properties['Capacitance (F)'])
-
-
-class LBlock(sb.Block):
-    def __init__(self, name):
-        # init super:
-        sb.Block.__init__(self, name, L)
-
-        # ports:
-        self.ports['positive'] = sb.Port(self, 0, (60, 0))
-        self.ports['negative'] = sb.Port(self, 1, (60, 100))
-
-        # properties:
-        self.properties['Inductance (H)'] = 0.1
-
-        # leads:
-        self.lines.append(((60, 0), (60, 20)))
-        self.lines.append(((60, 80), (60, 100)))
-
-        # coils (x, y, r, ang0, ang1, clockwise)
-        ang1 = -math.pi * 0.5
-        ang2 = math.pi * 0.5
-        self.arcs.append((60, 30, 10, ang1, ang2, True))
-        self.arcs.append((60, 50, 10, ang1, ang2, True))
-        self.arcs.append((60, 70, 10, ang1, ang2, True))
-
-    def get_engine(self, nodes):
-        return L(nodes, self.properties['Inductance (H)'])
-
-
-class VBlock(sb.Block):
-    def __init__(self, name):
-        # init super:
-        sb.Block.__init__(self, name, V)
-
-        # ports:
-        self.ports['positive'] = sb.Port(self, 0, (60, 0))
-        self.ports['negative'] = sb.Port(self, 1, (60, 100))
-
-        # properties:
-        self.properties['Voltage (V)'] = 1.0
-
-        # leads:
-        self.lines.append(((60, 0), (60, 25)))
-        self.lines.append(((60, 75), (60, 100)))
-
-        # plus:
-        self.lines.append(((60, 33), (60, 43)))
-        self.lines.append(((55, 38), (65, 38)))
-
-        # circle
-        self.circles.append((60, 50, 25))
-
-    def get_engine(self, nodes):
-        return V(nodes, self.properties['Voltage (V)'])
-
-
-class VSinBlock(sb.Block):
-    def __init__(self, name):
-        # init super:
-        sb.Block.__init__(self, name, V)
-
-        # ports:
-        self.ports['positive'] = sb.Port(self, 0, (60, 0))
-        self.ports['negative'] = sb.Port(self, 1, (60, 100))
-
-        # properties:
-        self.properties['Voltage Offset (V)'] = 0.0
-        self.properties['Voltage Amplitude (V)'] = 1.0
-        self.properties['Frequency (Hz)'] = 60.0
-        self.properties['Delay (s)'] = 0.0
-        self.properties['Damping factor (1/s)'] = 0.0
-        self.properties['Phase (rad)'] = 0.0
-
-        # leads:
-        self.lines.append(((60, 0), (60, 25)))
-        self.lines.append(((60, 75), (60, 100)))
-
-        # plus:
-        self.lines.append(((60, 33), (60, 43)))
-        self.lines.append(((55, 38), (65, 38)))
-
-        # circle
-        self.circles.append((60, 50, 25))
-
-        # sine:
-        a1 = math.pi * 1.0
-        a2 = math.pi * 0.0
-        self.arcs.append((53, 58, 7, a1, a2, True))
-        self.arcs.append((67, 58, 7, -a1, -a2, False))
-
-    def get_engine(self, nodes):
-        vo = self.properties['Voltage Offset (V)']
-        va = self.properties['Voltage Amplitude (V)']
-        freq = self.properties['Frequency (Hz)']
-        td = self.properties['Delay (s)']
-        theta = self.properties['Damping factor (1/s)']
-        phi = self.properties['Phase (rad)']
-
-        sine = inter.Sin(vo, va, freq, td, theta, phi)
-        return V(nodes, sine)
-
-
-class GndBlock(sb.Block):
-    def __init__(self, name):
-        # init super:
-        sb.Block.__init__(self, name, None, is_ground=True)
-
-        # port:
-        self.ports['ground'] = sb.Port(self, 0, (60, 0), is_ground=True)
-
-        # lead:
-        self.lines.append(((60, 0), (60, 15)))
-
-        # ground lines:
-        self.lines.append(((45, 15), (75, 15)))
-        self.lines.append(((52, 24), (68, 24)))
-        self.lines.append(((58, 33), (62, 33)))
-
-    def get_engine(self, nodes):
-        raise Exception("GND Block has no engine.")
-
-
-class VScopeBlock(sb.Block):
-    def __init__(self, name):
-        # init super:
-        sb.Block.__init__(self, name, None, is_signal_device=True)
-        self.size = (160, 120)
-        self.margin = 12
-
-        # port:
-        self.ports['positive'] = sb.Port(self, 0, (0, 60))
-        self.ports['negative'] = sb.Port(self, 1, (80, 120))
-
-        # rects:
-        (w, h), m = self.size, self.margin
-        
-        # rects:
-        (w, h), m = self.size, self.margin
-        self.rects.append(((0, 0, w, h, 5), (sb.DEVICE_COLOR, sb.SCOPE_BG)))
-        window = m, m, w - m * 2, h - m * 2, 1
-        self.rects.append((window, (sb.SCOPE_FG, sb.SCOPE_FG)))
-
-    def end(self):
-        times = self.engine.time
-        values = self.engine.data
-
-        n = len(times)
-
-        npoints = 1000
-        stride = int(n / npoints)
-        stride = max(stride, 2)
-
-        (w, h), m = self.size, self.margin
-
-        if max(times) > 0.0:
-            tscale = (w - m * 2.0) / max(times)
-            toffset = m
-
-            range_ = max(values) - min(values)
-
-            mid = min(values) + range_ * 0.5
-
-            vscale = 1.0
-            if range_ > 0.0:
-                vscale = -(h - m * 4.0) / range_
-
-            self.margin = 12
-
-            voffset = -(mid * vscale - m * 5)
-
-            # path:
-            plot_curve = []
-            for t, v in zip(times[::stride], values[::stride]):
-                plot_curve.append((t * tscale + toffset, v * vscale + voffset))
-
-            self.plot_curves = []
-            self.plot_curves.append((plot_curve, sb.SCOPE_CURVE))
-
-            window = (m, m), (w - m, m), (w - m, h - m), (m, h - m), (m, m)
-            self.plot_curves.append((window, None))
-
-    def get_engine(self, nodes):
-        if len(nodes) == 1:
-            nodes += [0]  # if only one connection, ground neg lead
-        self.engine = VScope(nodes)
-        return self.engine
-
-
-class VScope3Block(sb.Block):
-    def __init__(self, name):
-        # init super:
-        sb.Block.__init__(self, name, None, is_signal_device=True)
-        self.size = (160, 120)
-        self.margin = 12
-
-        # port:
-        self.ports['A'] = sb.Port(self, 0, (0, 40))
-        self.ports['B'] = sb.Port(self, 1, (0, 60))
-        self.ports['C'] = sb.Port(self, 2, (0, 80))
-        self.ports['N'] = sb.Port(self, 3, (80, 120))
-
-        # rects:
-        (w, h), m = self.size, self.margin
-
-        # rects:
-        (w, h), m = self.size, self.margin
-        self.rects.append(((0, 0, w, h, 5), (sb.DEVICE_COLOR, sb.SCOPE_BG)))
-        window = m, m, w - m * 2, h - m * 2, 1
-        self.rects.append((window, (sb.SCOPE_FG, sb.SCOPE_FG)))
-
-    def end(self):
-        times = self.engine.time
-        values1 = self.engine.data1
-        values2 = self.engine.data2
-        values3 = self.engine.data3
-
-        n = len(times)
-
-        npoints = 1000
-        stride = int(n / npoints)
-        stride = max(stride, 2)
-
-        (w, h), m = self.size, self.margin
-
-        if max(times) > 0.0:
-            tscale = (w - m * 2.0) / max(times)
-            toffset = m
-
-            all = values1 + values2 + values3
-
-            range_ = max(all) - min(all)
-
-            mid = min(all) + range_ * 0.5
-
-            vscale = 1.0
-            if range_ > 0.0:
-                vscale = -(h - m * 4.0) / range_
-
-            self.margin = 12
-
-            voffset = -(mid * vscale - m * 5)
-
-            self.plot_curves = []
-
-            # path:
-            plot_curve1 = []
-            plot_curve2 = []
-            plot_curve3 = []
-
-            for t, v1 in zip(times[::stride], values1[::stride]):
-                plot_curve1.append((t * tscale + toffset, v1 * vscale + voffset))
-
-            for t, v2 in zip(times[::stride], values2[::stride]):
-                plot_curve2.append((t * tscale + toffset, v2 * vscale + voffset))
-
-            for t, v3 in zip(times[::stride], values3[::stride]):
-                plot_curve3.append((t * tscale + toffset, v3 * vscale + voffset))
-
-            self.plot_curves.append((plot_curve1, sb.SCOPE_CURVE))
-            self.plot_curves.append((plot_curve2, wx.Colour(140, 180, 140)))
-            self.plot_curves.append((plot_curve3, wx.Colour(200, 255, 200)))
-
-            window = (m, m), (w - m, m), (w - m, h - m), (m, h - m), (m, m)
-            self.plot_curves.append((window, None))
-
-    def get_engine(self, nodes):
-        if len(nodes) == 1:
-            nodes += [0, 0, 0]
-        if len(nodes) == 2:
-            nodes += [0, 0]
-        if len(nodes) == 3:
-            nodes += [0]
-        self.engine = VScope3(nodes)
-        return self.engine
-
-
-class IScopeBlock(sb.Block):
-    def __init__(self, name):
-        # init super:
-        sb.Block.__init__(self, name, None)
-        self.size = (160, 120)
-        self.margin = 12
-
-        # port:
-        self.ports['positive'] = sb.Port(self, 0, (60, 160))
-        self.ports['negative'] = sb.Port(self, 1, (100, 160))
-
-        # lines:
-        self.lines.append(((80, 120), (80, 150)))
-        self.lines.append(((60, 160), (100, 160)))
-
-        # plus:
-        self.lines.append(((60, 133), (60, 143)))
-        self.lines.append(((55, 138), (65, 138)))
-
-        # circle
-        self.circles.append((75, 150, 10, 20))
-
-        # rects:
-        (w, h), m = self.size, self.margin
-        self.rects.append(((0, 0, w, h, 5), (sb.DEVICE_COLOR, sb.SCOPE_BG)))
-        window = m, m, w - m * 2, h - m * 2, 1
-        self.rects.append((window, (sb.SCOPE_FG, sb.SCOPE_FG)))
-
-    def end(self):
-        times = self.engine.time
-        values = self.engine.data
-
-        n = len(times)
-
-        npoints = 1000
-        stride = int(n / npoints)
-        stride = max(stride, 2)
-
-        (w, h), m = self.size, self.margin
-
-        if max(times) > 0.0:
-            tscale = (w - m * 2.0) / max(times)
-            toffset = m
-
-            range_ = max(values) - min(values)
-
-            mid = min(values) + range_ * 0.5
-
-            iscale = 1.0
-            if range_ > 0.0:
-                iscale = -(h - m * 4.0) / range_
-
-            self.margin = 12
-
-            ioffset = -(mid * iscale - m * 5)
-
-            # path:
-            plot_curve = []
-            for t, i in zip(times[::stride], values[::stride]):
-                plot_curve.append((t * tscale + toffset, i * iscale + ioffset))
-
-            self.plot_curves = []
-            self.plot_curves.append((plot_curve, sb.SCOPE_CURVE))
-
-
-
-    def get_engine(self, nodes):
-        self.engine = IScope(nodes)
-        return self.engine
-
-
-class PropertyDialog(gui.PropertyDialog):
-    def __init__(self, parent, caption, properties):
+class PropertyGetter(gui.PropertyDialog):
+    def __init__(self, parent, caption, properties, size=(300, 300)):
         self.armed = False
         gui.PropertyDialog.__init__(self, parent)
+
         self.SetTitle(caption)
         self.types = []
         self.keys = []
@@ -413,7 +43,22 @@ class PropertyDialog(gui.PropertyDialog):
         self.armed = True
         self.szr_main.Fit(self)
         self.Layout()
+        self.SetMinSize(size)
+
         self.propgrid.Bind(wx.EVT_KILL_FOCUS, self.OnKillFocus)
+
+    @classmethod
+    def update_properties(cls, parent, caption, properties):
+        propdlg = PropertyGetter(parent, caption, properties)
+
+        if propdlg.ShowModal() == wx.ID_OK:
+            for key, value in propdlg.properties.items():
+                if key in properties:
+                    type_ = type(value)
+                    if type_ is type(properties[key]):
+                        properties[key] = value
+        return properties
+
 
     def OnKillFocus(self, event):
         # Cell editor's grandparent, the grid GridWindow's parent, is the grid.
@@ -437,7 +82,6 @@ class PropertyDialog(gui.PropertyDialog):
         self.update()
         self.result = wx.ID_OK
         self.Destroy()
-
 
 
 class SchematicWindow(wx.Panel):
@@ -533,7 +177,10 @@ class SchematicWindow(wx.Panel):
         if self.hit_fields:
             field = self.hit_fields[0]
             old = field.properties['text']
-            properties = update_properties(self, 'Label', field.properties)
+
+            properties = PropertyGetter.update_properties(self,
+                                                          'Label',
+                                                          field.properties)
             new = properties['text']
             if not old == new:
                 if new in self.blocks:
@@ -1028,30 +675,32 @@ class SchematicWindow(wx.Panel):
 
     def start_add(self, type_=None, name=None):
 
+        # get the block definition from the global block dict:
+        cls = blocks[type_]
+        label = cls.label
+
         if not type_:
             type_ = sb.DEF_DEVICE
 
         if not name:
             i = 1
-            name = "{0}{1}".format(type_, i)
+            key = "{0}{1}".format(label, i)
             i = 1
-            while name in self.blocks:
+            while key in self.blocks:
                 i += 1
-                name = "{0}{1}".format(type_, i)
+                key = "{0}{1}".format(label, i)
         else:
             i = 0
-            while name in self.blocks:
+            key = name
+            while key in self.blocks:
                 i += 1
-                name = "{0}{1}".format(type_, i)
-
-        # get the block definition from the global block dict:
-        cls = blocks[type_]
+                key = "{0}{1}".format(name, i)
 
         # great the instance as the "ghost" to be placed on the schematic:
-        self.ghost = cls(name)
+        self.ghost = cls(key)
 
         self.mode = sb.Mode.ADD_BLOCK
-        self.blocks[name] = self.ghost
+        self.blocks[key] = self.ghost
         self.ghost.is_ghost = True
         self.ghost.translate((-50, -50))  # center mouse on device
         self.SetFocus()
@@ -1740,64 +1389,17 @@ class MainFrame(gui.MainFrame):
         index = event.GetSelection()
 
 
-# region Functions
-
-
-def update_properties(parent, caption, properties):
-    propdlg = PropertyDialog(parent, caption, properties)
-
-    if propdlg.ShowModal() == wx.ID_OK:
-        for key, value in propdlg.properties.items():
-            if key in properties:
-                type_ = type(value)
-                if type_ is type(properties[key]):
-                    properties[key] = value
-    return properties
-
-
-def import_devices(package="devices"):
-    """Imports devices and block classes into this module's namespace.
-    :param package: local package to search in
-    :return: None
-    """
-    global devices
-    global blocks
-
-
-    modpaths = os.listdir(package)
-    devicemods = {}
-
-    for modpath in modpaths:
-        name, ext = modpath.split(".")
-        if not name == "__init__" and ext == "py":
-            devicemods[name] = __import__(package + "." + name, fromlist=[name])
-
-    for name, mod in devicemods.items():
-        clsdefs = inspect.getmembers(mod, inspect.isclass)
-        for clsname, cls in clsdefs:
-            if issubclass(cls, sb.Block):
-                friendly_name = cls.friendly_name
-                blocks[friendly_name] = cls
-            elif issubclass(cls, inter.Device):
-                devices[clsname] = cls
-
-
-# endregion
-
-
-# region Main:
-
-
 if __name__ == '__main__':
 
-    import_devices("devices")
+    blocks, devices = load.import_devices("devices")
 
     app = wx.App()
     frame = MainFrame()
     frame.SetSize((800, 600))
     frame.SetPosition((100, 100))
-    #frame.new_schem()
+    frame.new_schem()
 
+    # debug code:
     #frame.open_schematic("/Users/josephmhood/Documents/Cir1.sch")
     #frame.open_schematic("C:/Users/josephmhood/Desktop/Cir1.sch")
     #frame.run()
@@ -1805,5 +1407,3 @@ if __name__ == '__main__':
     frame.Show()
     app.MainLoop()
 
-
-# endregion

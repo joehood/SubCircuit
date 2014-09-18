@@ -1,14 +1,13 @@
-
 import sys
-import wx
 import bdb
 
+import wx
 from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
 from matplotlib.figure import Figure
 from wx.py.editwindow import EditWindow as PyEdit
 from wx.py.shell import Shell as PyShell
 
-import editor_ui as ui
+from pyspyce.editor import editor_ui as ui
 
 
 class Debugger(bdb.Bdb):
