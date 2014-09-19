@@ -2,7 +2,7 @@ PySpyce Circuit Simulator
 =========================
 
 
-![alt text](https://github.com/josephmhood/PySpyce/blob/master/Artwork/screenshot_6.png "")
+![alt text](https://github.com/josephmhood/PySpyce/blob/master/Artwork/screenshot_9.png "")
 
 
 Python Implementation of SPICE Circuit Simulator. 
