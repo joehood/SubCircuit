@@ -459,19 +459,20 @@ class SchematicWindow(wx.Panel):
 
             self.active_connector.end = (x, y)
 
-            if self.hit_segments:
-                seg = self.hit_segments[0]
-                connector = seg.connector
-                if not connector is self.active_connector:
-                    hpt = seg.closest_hit_point
-                    if hpt:
-                        hpt = self.snap(hpt)
-                        if seg.ghost_knee:
-                            seg.ghost_knee.position = hpt
-                        else:
-                            knee = sb.KneePoint(seg.connector, hpt)
-                            seg.ghost_knee = knee
-                            self.ghost_knee_segment = seg
+            if self.top_obj:
+                if not isinstance(self.top_obj, sb.Port) and self.hit_segments:
+                    seg = self.hit_segments[0]
+                    connector = seg.connector
+                    if not connector is self.active_connector:
+                        hpt = seg.closest_hit_point
+                        if hpt:
+                            hpt = self.snap(hpt)
+                            if seg.ghost_knee:
+                                seg.ghost_knee.position = hpt
+                            else:
+                                knee = sb.KneePoint(seg.connector, hpt)
+                                seg.ghost_knee = knee
+                                self.ghost_knee_segment = seg
 
             elif self.ghost_knee_segment:
                 self.ghost_knee_segment.ghost_knee = None
