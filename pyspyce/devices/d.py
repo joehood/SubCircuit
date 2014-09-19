@@ -76,10 +76,6 @@ class D(inter.MNADevice):
                 if key in self.__dict__:
                     self.__dict__[key] = self.parameters[key]
 
-    def step(self, dt, t):
-        """ Do nothing here. Non-linear device."""
-        pass
-
     def minor_step(self, dt, t, k):
         vt = 25.85e-3
         v = self.get_across(0, 1)

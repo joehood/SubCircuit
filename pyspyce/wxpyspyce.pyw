@@ -1494,7 +1494,7 @@ if __name__ == '__main__':
     #frame.new_schem()
 
     # debug code:
-    frame.open_schematic("/Users/josephmhood/Documents/scope.sch")
+    frame.open_schematic("/Users/josephmhood/Documents/bjt1.sch")
     #frame.open_schematic("C:/Users/josephmhood/Desktop/Cir1.sch")
     #frame.run()
 
