@@ -193,7 +193,7 @@ class SchematicWindow(wx.Panel):
         elif self.hit_blocks:
             block = self.hit_blocks[0]
             label = "Properties for {0}".format(str(block))
-            update_properties(self, label, block.properties)
+            PropertyGetter.update_properties(self, label, block.properties)
 
     def select_object(self, obj):
         obj.selected = True
@@ -1379,7 +1379,7 @@ class MainFrame(gui.MainFrame):
         self.add_device(type_)
 
     def on_setup(self, event):
-        self.active_schem.sim_settings = update_properties(self,
+        self.active_schem.sim_settings = PropertyGetter.update_properties(self,
                 "Simulation Setup", self.active_schem.sim_settings)
 
     def on_run(self, event):
