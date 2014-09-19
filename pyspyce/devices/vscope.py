@@ -2,6 +2,7 @@
 
 import pyspyce.sandbox as sb
 import pyspyce.interfaces as inter
+import wx
 
 
 class VScope(inter.SignalDevice):
@@ -130,9 +131,6 @@ class VScopeBlock(sb.Block):
             self.plot_curves = []
             self.plot_curves.append((plot_curve, sb.SCOPE_CURVE))
 
-            window = (m, m), (w - m, m), (w - m, h - m), (m, h - m), (m, m)
-            self.plot_curves.append((window, None))
-
     def get_engine(self, nodes):
         if len(nodes) == 1:
             nodes += [0]  # if only one connection, ground neg lead
@@ -216,12 +214,9 @@ class VScope3Block(sb.Block):
             for t, v3 in zip(times[::stride], values3[::stride]):
                 plot_curve3.append((t * tscale + toffset, v3 * vscale + voffset))
 
-            self.plot_curves.append((plot_curve1, sb.SCOPE_CURVE))
-            self.plot_curves.append((plot_curve2, wx.Colour(140, 180, 140)))
-            self.plot_curves.append((plot_curve3, wx.Colour(200, 255, 200)))
-
-            window = (m, m), (w - m, m), (w - m, h - m), (m, h - m), (m, m)
-            self.plot_curves.append((window, None))
+            self.plot_curves.append((plot_curve1, wx.Colour(255, 100, 100)))
+            self.plot_curves.append((plot_curve2, wx.Colour(100, 255, 100)))
+            self.plot_curves.append((plot_curve3, wx.Colour(100, 100, 255)))
 
     def get_engine(self, nodes):
         if len(nodes) == 1:

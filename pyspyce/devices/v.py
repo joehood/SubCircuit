@@ -191,4 +191,53 @@ class VSinBlock(sb.Block):
         return V(nodes, sin)
 
 
+class VPulseBlock(sb.Block):
+    friendly_name = "Voltage Source (Pulse)"
+    family = "Sources"
+    label = "VPULSE"
+    engine = V
+
+    def __init__(self, name):
+        # init super:
+        sb.Block.__init__(self, name, V)
+
+        # ports:
+        self.ports['positive'] = sb.Port(self, 0, (60, 0))
+        self.ports['negative'] = sb.Port(self, 1, (60, 100))
+
+        # properties:
+        self.properties['Voltage 1 (V)'] = 0.0
+        self.properties['Voltage 2 (V)'] = 1.0
+        self.properties['Delay (s)'] = 0.0
+        self.properties['Rise Time (s)'] = 0.0
+        self.properties['Fall Time (s)'] = 0.0
+        self.properties['Width (s)'] = 0.01
+        self.properties['Period (s)'] = 0.02
+
+        # leads:
+        self.lines.append(((60, 0), (60, 25)))
+        self.lines.append(((60, 75), (60, 100)))
+
+        # plus:
+        self.lines.append(((60, 33), (60, 43)))
+        self.lines.append(((55, 38), (65, 38)))
+
+        # circle
+        self.circles.append((60, 50, 25))
+
+        # pulse:
+        self.lines.append(((45, 60), (55, 60), (55, 50),
+                           (65, 50), (65, 60), (75, 60)))
+
+    def get_engine(self, nodes):
+        v1 = self.properties['Voltage 1 (V)']
+        v2 = self.properties['Voltage 2 (V)']
+        td = self.properties['Delay (s)']
+        tr = self.properties['Rise Time (s)']
+        tf = self.properties['Fall Time (s)']
+        pw = self.properties['Width (s)']
+        per = self.properties['Period (s)']
+
+        pulse = stim.Pulse(v1, v2, td, tr, tf, pw, per)
+        return V(nodes, pulse)
 

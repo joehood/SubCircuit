@@ -3,10 +3,12 @@
 from __future__ import print_function, division
 import pickle
 import os
+import sys
 import math
 from copy import deepcopy as clone
 
 import wx
+import wx.aui as aui
 
 import pyspyce.netlist as net
 import pyspyce.interfaces as inter
@@ -17,7 +19,7 @@ import pyspyce.loader as load
 
 # region globals:
 
-devices = {}
+engines = {}
 blocks = {}
 
 # endregion
@@ -146,7 +148,7 @@ class SchematicWindow(wx.Panel):
         self.SetDoubleBuffered(True)
         self.gc = None
 
-        # members:
+        # state:
         self.netlist = None
         self.selected_objects = []
         self.hit_objects = []
@@ -513,12 +515,12 @@ class SchematicWindow(wx.Panel):
             if isinstance(obj, sb.Connector):
                 for knee in obj.knees:
                     knee.translate((dx, dy))
-        self.auto_connect()
+        #self.auto_connect()
 
     def move_selection_by(self, delta):
         for obj in self.selected_objects:
             obj.translate(delta)
-        self.auto_connect()
+        #self.auto_connect()
 
     def on_scroll(self, event):
         self.update_position(event)
@@ -582,7 +584,6 @@ class SchematicWindow(wx.Panel):
             self.move_selection_by((sb.MOVE_DELTA, 0))
 
         # rotate:
-
         elif code == ord('R'):
             if self.mode == sb.Mode.ADD_BLOCK:
                 self.ghost.rotate(90)
@@ -590,6 +591,25 @@ class SchematicWindow(wx.Panel):
                 for obj in self.selected_objects:
                     if isinstance(obj, sb.Block):
                         obj.rotate(90)
+
+        # flip horizontal:
+        elif code == ord('H'):
+            if self.mode == sb.Mode.ADD_BLOCK:
+                self.ghost.flip_horizontal()
+            elif self.mode == sb.Mode.STANDBY:
+                for obj in self.selected_objects:
+                    if isinstance(obj, sb.Block):
+                        obj.flip_horizontal()
+
+        # flip vertical:
+        elif code == ord('V'):
+            if self.mode == sb.Mode.ADD_BLOCK:
+                self.ghost.flip_vertical()
+            elif self.mode == sb.Mode.STANDBY:
+                for obj in self.selected_objects:
+                    if isinstance(obj, sb.Block):
+                        obj.flip_vertical()
+
         self.Refresh()
 
     def on_paint(self, event):
@@ -843,6 +863,13 @@ class SchematicWindow(wx.Panel):
         matrix = gc.CreateMatrix()
         matrix.Translate(x, y)
         matrix.Rotate(rad)
+
+        if block.hor_flip:
+            matrix.Scale(-1.0, 1.0)
+
+        if block.ver_flip:
+            matrix.Scale(1.0, -1.0)
+
         path = gc.CreatePath()
 
         for line in block.lines:
@@ -866,14 +893,17 @@ class SchematicWindow(wx.Panel):
                 path.AddEllipse(*circle)
 
         for arc in block.arcs:
+
             x, y, r, ang1, ang2, clockwise = arc
             x0 = x + r * math.cos(ang1)
-            y0 = y + r * math.sin(ang2)
+            y0 = y + r * math.sin(ang1)
             path.MoveToPoint((x0, y0))
             path.AddArc(x, y, r, ang1, ang2, clockwise)
 
         path.Transform(matrix)
         gc.StrokePath(path)
+
+        block.bounding_rects[0], block.center = self.get_bounding(path)
 
         for rect, (stroke, fill) in hd_rects:
             path = gc.CreatePath()
@@ -885,6 +915,7 @@ class SchematicWindow(wx.Panel):
             if stroke:
                 gc.SetPen(wx.Pen(stroke, 1))
                 gc.StrokePath(path)
+
 
         if block.plot_curves:
 
@@ -902,7 +933,6 @@ class SchematicWindow(wx.Panel):
                 path.Transform(matrix)
                 gc.StrokePath(path)
 
-        block.bounding_rects[0], block.center = self.get_bounding(path)
 
         for key, field in block.fields.items():
 
@@ -1039,27 +1069,29 @@ class SchematicWindow(wx.Panel):
 
             draw = False
 
-            if knee.selected or segment_selected:
-                gc.SetPen(self.pen_select)
-                gc.SetBrush(self.brush_select)
-                draw = True
+            if knee is not None:
 
-            elif knee.hover or segment_hover:
-                gc.SetPen(self.pen_hover)
-                gc.SetBrush(self.brush_hover)
-                draw = True
+                if knee.selected or segment_selected:
+                    gc.SetPen(self.pen_select)
+                    gc.SetBrush(self.brush_select)
+                    draw = True
 
-            if len(knee.connectors) > 1 or draw:
-                path = gc.CreatePath()
+                elif knee.hover or segment_hover:
+                    gc.SetPen(self.pen_hover)
+                    gc.SetBrush(self.brush_hover)
+                    draw = True
 
-                (x, y), r, m = self.snap(knee), sb.PORT_RADIUS, sb.PORT_HIT_MARGIN
-                path.MoveToPoint(x, y)
-                path.AddCircle(x, y, r)
-                knee.bounding_rects[0] = (x-r-m, y-r-m, (r+m)*2, (r+m)*2)
-                knee.center = (x, y)
+                if len(knee.connectors) > 1 or draw:
+                    path = gc.CreatePath()
 
-                #gc.StrokePath(path)
-                gc.FillPath(path)
+                    (x, y), r, m = self.snap(knee), sb.PORT_RADIUS, sb.PORT_HIT_MARGIN
+                    path.MoveToPoint(x, y)
+                    path.AddCircle(x, y, r)
+                    knee.bounding_rects[0] = (x-r-m, y-r-m, (r+m)*2, (r+m)*2)
+                    knee.center = (x, y)
+
+                    #gc.StrokePath(path)
+                    gc.FillPath(path)
 
         # draw ghost knee point:
         for seg in connector.segments:
@@ -1127,8 +1159,9 @@ class SchematicWindow(wx.Panel):
             if self.top_obj:
                 path = gc.CreatePath()
                 for rect in self.top_obj.bounding_rects:
-                    x, y, w, h = rect
-                    path.AddRoundedRectangle(x, y, w, h, 2)
+                    if not rect == (0, 0, 0, 0):
+                        x, y, w, h = rect
+                        path.AddRoundedRectangle(x, y, w, h, 2)
                 gc.SetPen(wx.Pen(wx.Colour(200, 100, 100), 2))
                 gc.StrokePath(path)
 
@@ -1207,9 +1240,25 @@ class SchematicWindow(wx.Panel):
                 nodes = []
                 for k, v in sort:
                     nodes.append(v)
-                netlist.device(block.name, block.get_engine(nodes))
+
+                if block.__class__.engine == engines["X"]:
+
+                    netlist.device(block.name, block.get_engine(nodes,
+                                                                netlist))
+                else:
+
+                    netlist.device(block.name, block.get_engine(nodes))
 
         return netlist
+
+
+class StatusStream:
+    def __init__(self, statusbar):
+        self.statusbar = statusbar
+
+    def write(self, string):
+        if string.strip():
+            self.statusbar.SetStatusText(string)
 
 
 class MainFrame(gui.MainFrame):
@@ -1220,6 +1269,12 @@ class MainFrame(gui.MainFrame):
         self.schematics = {}
         self.schcnt = 1
         self.active_schem = None
+
+        # bindings:
+        self.Bind(aui.EVT_AUINOTEBOOK_PAGE_CLOSED, self.on_page_close,
+                  self.ntb_main)
+        self.Bind(aui.EVT__AUINOTEBOOK_TAB_RIGHT_DOWN, self.on_schem_context,
+                  self.ntb_main)
 
         # add all loaded devices to the window:
         self.menu_blocks = wx.Menu()
@@ -1249,15 +1304,31 @@ class MainFrame(gui.MainFrame):
         # re-layout after adding menu:
         self.Layout()
 
+        self.statusbar.SetStatusText("Ready")
+
+        self.status_stream = StatusStream(self.statusbar)
+        #sys.stdout = self.status_stream
+
     def new_schem(self, name=None):
         if not name:
-            name = MainFrame.DEF_NAME.format(self.schcnt)
+            name = MainFrame.DEF_NAME.format(self.schcnt) + ".sch"
+            unique = False
+            while not unique:
+                unique = True
+                for schem in self.schematics:
+                    if name == schem:
+                        unique = False
+                        break
+                if not unique:
+                    self.schcnt += 1
+                    name = MainFrame.DEF_NAME.format(self.schcnt) + ".sch"
+        self.schcnt += 1
         sch = sb.Schematic(name)
         schem = SchematicWindow(frame.ntb_main, sch)
         self.ntb_main.AddPage(schem, name, select=True)
-        self.schcnt += 1
         self.schematics[name] = schem
         self.active_schem = schem
+        schem.path = None
         return schem
 
     def add_device(self, type_):
@@ -1279,6 +1350,10 @@ class MainFrame(gui.MainFrame):
                     device.plot_curves = []
                 pickle.dump(schem, f)
                 wx.MessageBox("File saved to: [{0}]".format(path))
+                pth, fil = os.path.split(path)
+                self.ntb_main.SetPageText(self.ntb_main.GetSelection(), fil)
+                self.active_schem.name = fil
+
         except Exception as e:
             wx.MessageBox("File save failed. {0}".format(e.message))
 
@@ -1287,10 +1362,11 @@ class MainFrame(gui.MainFrame):
         f = open(path)
         sch = pickle.load(f)
         sch.name = name
+        sch.path = path
         schem = SchematicWindow(frame.ntb_main, sch)
         self.schematics[name] = schem
         self.active_schem = schem
-        self.ntb_main.AddPage(schem, name)
+        self.ntb_main.AddPage(schem, name, select=True)
 
     def run(self):
         if self.active_schem:
@@ -1351,15 +1427,15 @@ class MainFrame(gui.MainFrame):
         if schem:
             name = schem.name.split(".")[0]
             name = "{0}.sch".format(name)
-            dlg = wx.FileDialog(self, message="Save Schematic",
+            dlg = wx.FileDialog(self,
+                                message="Save Schematic As",
                                 defaultFile=name,
-                                wildcard="*.sch",
-                                style=wx.FD_SAVE)
+                                wildcard=".sch",
+                                style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT)
 
             if dlg.ShowModal() == wx.ID_OK:
                 path = dlg.GetPath()
                 self.save_schematic(schem, path)
-                schem.path = path
 
     def on_save(self, event):
         schem = None
@@ -1371,6 +1447,20 @@ class MainFrame(gui.MainFrame):
         if schem:
             if schem.path:
                 self.save_schematic(schem, schem.path)
+            else:
+                name = schem.name
+                if len(name.split(".")) > 1:
+                    name = "".join(name.split(".")[:-1])
+                name += ".sch"
+                dlg = wx.FileDialog(self,
+                                    message="Save Schematic",
+                                    defaultFile=name,
+                                    wildcard=".sch",
+                                    style=wx.FD_SAVE)
+                if dlg.ShowModal() == wx.ID_OK:
+                    path = dlg.GetPath()
+                    self.save_schematic(schem, path)
+                    schem.path = path
 
     def on_add_ground(self, event):
         self.add_device("GND")
@@ -1389,19 +1479,22 @@ class MainFrame(gui.MainFrame):
     def on_page_close(self, event):
         index = event.GetSelection()
 
+    def on_schem_context(self, event):
+        pass
+
 
 if __name__ == '__main__':
 
-    blocks, devices = load.import_devices("devices")
+    blocks, engines = load.import_devices("devices")
 
     app = wx.App()
     frame = MainFrame()
     frame.SetSize((800, 600))
     frame.SetPosition((100, 100))
-    frame.new_schem()
+    #frame.new_schem()
 
     # debug code:
-    #frame.open_schematic("/Users/josephmhood/Documents/Cir1.sch")
+    frame.open_schematic("/Users/josephmhood/Documents/scope.sch")
     #frame.open_schematic("C:/Users/josephmhood/Desktop/Cir1.sch")
     #frame.run()
 

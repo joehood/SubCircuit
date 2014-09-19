@@ -22,16 +22,31 @@ class L(inter.MNADevice, inter.CurrentSensor):
         initial conditions (if any) apply only if the UIC option is specified on the
         .TRAN analysis line.
         """
-        inter.MNADevice.__init__(self, nodes, 1, **parameters)
+        self.linkable = False
+
+        if len(nodes) == 2:
+            inter.MNADevice.__init__(self, nodes, 1, **parameters)
+
+        elif len(nodes) == 3:
+            inter.MNADevice.__init__(self, nodes, 0, **parameters)
+            self.linkable = True
+
         self.value = value
         self.ic = ic
         self.res = res
 
     def connect(self):
-        nplus, nminus = self.nodes
-        self.port2node = {0: self.get_node_index(nplus),
-                          1: self.get_node_index(nminus),
-                          2: self.create_internal("{0}_int".format(self.name))}
+        if self.linkable:
+            nplus, nminus, link = self.nodes
+            self.port2node = {0: self.get_node_index(nplus),
+                              1: self.get_node_index(nminus),
+                              2: self.get_node_index(link)}
+        else:
+            nplus, nminus = self.nodes
+            internal = "{0}_int".format(self.name)
+            self.port2node = {0: self.get_node_index(nplus),
+                              1: self.get_node_index(nminus),
+                              2: self.create_internal(internal)}
 
     def start(self, dt):
         self.jac[0, 2] = 1.0
@@ -71,8 +86,8 @@ class LBlock(sb.Block):
         self.lines.append(((60, 80), (60, 100)))
 
         # coils (x, y, r, ang0, ang1, clockwise)
-        ang1 = -math.pi * 0.5
-        ang2 = math.pi * 0.5
+        ang1 = math.pi * 0.5
+        ang2 = 3.0 * math.pi * 0.5
         self.arcs.append((60, 30, 10, ang1, ang2, True))
         self.arcs.append((60, 50, 10, ang1, ang2, True))
         self.arcs.append((60, 70, 10, ang1, ang2, True))
@@ -80,3 +95,40 @@ class LBlock(sb.Block):
     def get_engine(self, nodes):
         return L(nodes, self.properties['Inductance (H)'])
 
+
+
+class LLinkBlock(sb.Block):
+    """Schematic graphical inteface for L device."""
+    friendly_name = "Inductor (Linkable)"
+    family = "Elementary"
+    label = "L"
+    engine = L
+
+    def __init__(self, name):
+        # init super:
+        sb.Block.__init__(self, name, L)
+
+        # ports:
+        self.ports['positive'] = sb.Port(self, 0, (60, 0))
+        self.ports['negative'] = sb.Port(self, 1, (60, 100))
+        self.ports['link'] = sb.Port(self, 1, (80, 20))
+
+        # properties:
+        self.properties['Inductance (H)'] = 0.1
+
+        # leads:
+        self.lines.append(((60, 0), (60, 20)))
+        self.lines.append(((60, 80), (60, 100)))
+
+        # coils (x, y, r, ang0, ang1, clockwise)
+        ang1 = math.pi * 0.5
+        ang2 = 3.0 * math.pi * 0.5
+        self.arcs.append((60, 30, 10, ang1, ang2, False))
+        self.arcs.append((60, 50, 10, ang1, ang2, False))
+        self.arcs.append((60, 70, 10, ang1, ang2, False))
+
+        # mag link bar:
+        self.lines.append(((80, 20), (80, 80)))
+
+    def get_engine(self, nodes):
+        return L(nodes, self.properties['Inductance (H)'])

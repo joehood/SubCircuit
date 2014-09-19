@@ -11,7 +11,7 @@ def import_devices(package="devices"):
     :param package: local package to search in
     :return: None
     """
-    devices = {}
+    engines = {}
     blocks = {}
 
     modpaths = os.listdir(package)
@@ -29,6 +29,6 @@ def import_devices(package="devices"):
                 friendly_name = cls.friendly_name
                 blocks[friendly_name] = cls
             elif issubclass(cls, inter.Device):
-                devices[clsname] = cls
+                engines[clsname] = cls
 
-    return blocks, devices
+    return blocks, engines

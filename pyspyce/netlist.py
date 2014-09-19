@@ -7,7 +7,7 @@ from scipy.sparse import csc_matrix as smatrix
 import numpy as np
 import numpy.linalg as la
 
-import devices.x
+import pyspyce.devices.x
 import pyspyce.interfaces as inter
 import pyspyce.simulator as sim
 
@@ -54,7 +54,7 @@ class Netlist():
 
         for x_name, x_device in self.devices.items():
 
-            if isinstance(x_device, devices.x.X):  # if subckt instance device:
+            if x_name[0] == "X":  # if subckt instance device:
 
                 subckt_name = x_device.subckt
 
@@ -73,6 +73,7 @@ class Netlist():
                         # replace subckt instance device node names with
                         # external node names & mangle the internal node names:
 
+                        new_device.nodes = list(new_device.nodes)
                         for i, node in enumerate(new_device.nodes):
                             if node == 0 or node == 'ground' or node == 'gnd':
                                 new_device.nodes[i] = 0

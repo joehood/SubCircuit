@@ -2,6 +2,15 @@
 
 import pyspyce.interfaces as inter
 import pyspyce.sandbox as sb
+from pyspyce.devices.c import C
+from pyspyce.devices.d import D
+from pyspyce.devices.e import E
+from pyspyce.devices.i import I
+from pyspyce.devices.k import K
+from pyspyce.devices.l import L
+from pyspyce.devices.r import R
+from pyspyce.devices.s import S
+from pyspyce.devices.v import V
 
 
 class X(inter.MNADevice):
@@ -43,25 +52,38 @@ class XBlock2Port(sb.Block):
         self.ports['port2'] = sb.Port(self, 1, (60, 100))
 
         # properties:
-        self.properties['Subckt Name'] = "MySubckt"
-        self.properties['Port 1 name'] = "1"
-        self.properties['Port 2 name'] = "2"
-        self.properties['Definition'] = "R((1, 2), 10.0)"
-
+        self.properties['Subckt Name'] = "RLCSeries"
+        self.properties['Port 1 Name'] = "1"
+        self.properties['Port 2 Name'] = "2"
+        self.properties['Device 1'] = "R((1, 3), 1.0)"
+        self.properties['Device 2'] = "L((3, 4), 0.001)"
+        self.properties['Device 3'] = "C((4, 2), 0.001)"
+        self.properties['Device 4'] = ""
+        self.properties['Device 5'] = ""
+        self.properties['Device 6'] = ""
+        self.properties['Device 7'] = ""
+        self.properties['Device 8'] = ""
+        self.properties['Device 9'] = ""
 
         # leads:
         self.lines.append(((60, 0), (60, 20), (45, 25), (75, 35), (45, 45),
                            (75, 55), (45, 65), (75, 75), (60, 80), (60, 100)))
 
-        # box:
 
+    def get_engine(self, nodes, netlist=None):
 
-    def get_engine(self, nodes):
-        ports = self.properties['Port 1 name'], self.properties['Port 2 name']
+        ports = self.properties['Port 1 Name'], self.properties['Port 2 Name']
         subckt = inter.Subckt(ports)
-        devicedefs = self.properties["Definition"].split("\n")
-        for devicedef in devicedefs:
-            device = eval(devicedef)
-            subckt.device(devicedef, device)
-        return X(nodes, subckt)
+        if netlist:
+            netlist.subckt(self.properties['Subckt Name'], subckt)
+        for i in range(1, 10):
+            devicedef = self.properties["Device {0}".format(i)]
+            if devicedef.strip():
+                try:
+                    device = eval(devicedef, globals(), locals())
+                    subckt.device(devicedef, device)
+                except Exception as e:
+                    print(e.message)
+
+        return X(nodes, self.properties['Subckt Name'])
 

@@ -26,9 +26,7 @@ class R(inter.MNADevice):
         RLOAD 2 10 10K
         RMOD 3 7 RMODEL L=10u W=1u
         """
-        inter.MNADevice.__init__(self, nodes, 0,
-                                 family=inter.DeviceFamilies.ELEMENTARY,
-                                 **parameters)
+        inter.MNADevice.__init__(self, nodes, 0, **parameters)
         self.value = value
         self.rmodel = rmodel
         self.l = l

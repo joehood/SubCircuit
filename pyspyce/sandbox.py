@@ -74,6 +74,12 @@ class SchematicObject(object):
     def rotate(self, angle):
         self.rotation += angle
 
+    def flip_horizontal(self):
+        self.hor_flip = not self.hor_flip
+
+    def flip_vertical(self):
+        self.ver_flip = not self.ver_flip
+
     def hittest(self, point):
         x, y = point
         hit = False

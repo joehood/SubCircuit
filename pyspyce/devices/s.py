@@ -69,9 +69,11 @@ class S(inter.MNADevice, inter.CurrentSensor):
     changes inform SPICE3 to be more careful around the switch points so that no
     errors are made due to the rapid change in the circuit.
     """
+    RON = 1.0E-6
+    ROFF = 1.0E6
 
-    def __init__(self, name, nodes, model=None, vsource=None, on=False,
-                 **kwargs):
+    def __init__(self, nodes, model=None, vsource=None, on=False,
+                 **parameters):
         """
         Defines a switch device instance for subcircuit.
         :param name: name of switch. Must be unique within subcircuit
@@ -83,19 +85,7 @@ class S(inter.MNADevice, inter.CurrentSensor):
         :param vsource: name of the controlling voltage source. Optional
         :param on: defines whether the initial state of the switch is ON at t=0
         """
-        inter.MNADevice.__init__(self, name, 3)
-        self.name = name
-        self.node1 = nodes[0]
-        self.node2 = nodes[1]
-        self.internal = nodes[2]
-        self.nodes = [self.node1, self.node2, self.internal]
-        self.node2port = {self.node1: 0, self.node2: 1, self.internal: 2}
-        self.cnode1 = None
-        self.cnode2 = None
-
-        if len(nodes) == 5:
-            self.cnode1 = nodes[3]
-            self.cnode2 = nodes[4]
+        inter.MNADevice.__init__(self, nodes, 1, **parameters)
 
         self.model = model
         self.vsource = vsource
@@ -108,10 +98,21 @@ class S(inter.MNADevice, inter.CurrentSensor):
         self.it = 0.0
         self.vh = 0.0
         self.ih = 0.0
-        self.ron = 1.0
-        self.roff = 1.0E12
+        self.ron = S.RON
+        self.roff = S.ROFF
 
-        self.kwargs = kwargs
+        self.parameters = parameters
+
+        self.ncp, self.ncm, self.np, self.nm = None, None, None, None
+
+    def connect(self):
+        self.ncp, self.ncm, self.np, self.nm = self.nodes
+        self.port2node = {0: self.get_node_index(self.ncp),
+                          1: self.get_node_index(self.ncm),
+                          2: self.get_node_index(self.np),
+                          3: self.get_node_index(self.nm),
+                          4: self.create_internal("{0}_int".format(self.name))}
+
 
     def start(self, dt):
         """Initialize the switch model for t=0."""
@@ -124,27 +125,27 @@ class S(inter.MNADevice, inter.CurrentSensor):
                     self.__dict__[key] = self.model.params[key]
 
         # now override with any passed-in keyword args:
-        if self.kwargs:
-            for key in self.kwargs:
+        if self.parameters:
+            for key in self.parameters:
                 if key in self.__dict__:
-                    self.__dict__[key] = self.kwargs[key]
+                    self.__dict__[key] = self.parameters[key]
 
         # initialize switch state:
         self.state = self.on
 
         # set constant part of jacobian:
-        self.jac[0, 2] = 1.0
-        self.jac[1, 2] = -1.0
-        self.jac[2, 0] = 1.0
-        self.jac[2, 1] = -1.0
+        self.jac[2, 4] = 1.0
+        self.jac[3, 4] = -1.0
+        self.jac[4, 2] = 1.0
+        self.jac[4, 3] = -1.0
 
         # determine switch state and transition if necessary:
         if self.state:
-            self.jac[2, 2] = -self.ron
+            self.jac[4, 4] = -self.ron
         else:
-            self.jac[2, 2] = -self.roff
+            self.jac[4, 4] = -self.roff
 
-        self.bequiv[2] = 0.0
+        self.bequiv[4] = 0.0
 
     def step(self, dt, t):
         """Do nothing here. Non-linear behavior is modeled in minor_step()."""
@@ -164,23 +165,59 @@ class S(inter.MNADevice, inter.CurrentSensor):
         if self.vsource:
             control_signal = self.get_across(external_device=self.vsource)
         else:
-            control_signal = self.get_across(self.cnode1, self.cnode2)
+            control_signal = self.get_across(0, 1)
 
         # determine switch state and transition/update jac if necessary:
         if control_signal >= self.vt:
             if not self.state:
                 self.state = True
-                self.jac[2, 2] = -self.ron
+                self.jac[4, 4] = -self.ron
         elif control_signal < self.vt:
             if self.state:
                 self.state = False
-                self.jac[2, 2] = -self.roff
+                self.jac[4, 4] = -self.roff
 
         # update beq:
         if self.state:
-            self.bequiv[2] = -(self.ron * self.get_across(2))
+            self.bequiv[4] = -(self.ron * self.get_across(2))
         else:
-            self.bequiv[2] = self.get_across(0, 1)
+            self.bequiv[4] = self.get_across(0, 1)
 
     def get_current_node(self):
-        return self.nodes[2]
+        return self.nodes[4], 1.0
+
+
+class SBlock(sb.Block):
+    """Schematic graphical inteface for S device."""
+    friendly_name = "Voltage Controlled Switch (S)"
+    family = "Switches"
+    label = "S"
+    engine = S
+
+    def __init__(self, name):
+        # init super:
+        sb.Block.__init__(self, name)
+
+        # ports:
+        self.ports['control positive'] = sb.Port(self, 0, (20, 40))
+        self.ports['control negative'] = sb.Port(self, 1, (20, 60))
+        self.ports['positive'] = sb.Port(self, 2, (60, 0))
+        self.ports['negative'] = sb.Port(self, 3, (60, 100))
+
+        # properties:
+
+        # leads:
+        self.lines.append(((60, 0), (60, 35)))
+        self.lines.append(((60, 65), (60, 100)))
+
+        self.lines.append(((20, 40), (35, 40)))
+        self.lines.append(((20, 60), (35, 60)))
+
+        # box:
+        self.lines.append(((60, 65), (75, 38)))
+        self.rects.append((35, 20, 50, 60, 3))
+
+
+    def get_engine(self, nodes):
+        return S(nodes)
+
