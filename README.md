@@ -21,8 +21,17 @@ PySpyce allows the creation of netlists through a schematic editor or directly w
 
 ###Graphical Example:###
 
+On a Mac:
+
 ![alt text](https://github.com/josephmhood/PySpyce/blob/master/Artwork/screenshot_10.png "")
 
+On Windows:
+
+![alt text](https://github.com/josephmhood/PySpyce/blob/master/Artwork/boost_schem.png "")
+
+Plotting:
+
+![alt text](https://github.com/josephmhood/PySpyce/blob/master/Artwork/boost_chart.png "")
 
 ###Programmatic Netlist Development:###
 

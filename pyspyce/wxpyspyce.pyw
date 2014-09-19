@@ -525,7 +525,7 @@ class SchematicWindow(wx.Panel):
     def on_scroll(self, event):
         self.update_position(event)
         rot = event.GetWheelRotation()
-        self.scale += rot * self.scale_factor
+        self.scale += rot * self.scale_factor * 0.1
         self.scale = max(0.5, self.scale)
         self.update_position(event)
         self.Refresh()
@@ -1494,7 +1494,7 @@ if __name__ == '__main__':
     #frame.new_schem()
 
     # debug code:
-    frame.open_schematic("/Users/josephmhood/Documents/bjt1.sch")
+    # frame.open_schematic("/Users/josephmhood/Documents/bjt1.sch")
     #frame.open_schematic("C:/Users/josephmhood/Desktop/Cir1.sch")
     #frame.run()
 
