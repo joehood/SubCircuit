@@ -1,8 +1,8 @@
-![alt text](Artwork/pyspyce128.png "") PySpyce Circuit Simulator
+![alt text](pyspyce/artwork/pyspyce128.png "") PySpyce Circuit Simulator
 =========================
 
 
-![alt text](Artwork/screen1.png "")
+![alt text](pyspyce/artwork/screen1.png "")
 
 
 Python Implementation of SPICE Circuit Simulator. 
@@ -23,15 +23,15 @@ PySpyce allows the creation of netlists through a schematic editor or directly w
 
 On a Mac:
 
-![alt text](Artwork/screen2.png "")
+![alt text](pyspyce/artwork/screen2.png "")
 
 On Windows:
 
-![alt text](Artwork/screen3.png "")
+![alt text](pyspyce/artwork/screen3.png "")
 
 Plotting:
 
-![alt text](Artwork/screen4.png "")
+![alt text](pyspyce/artwork/screen4.png "")
 
 ###Programmatic Netlist Development:###
 
@@ -64,7 +64,7 @@ for i in range(1, 9):
 
 netlist.plot(*voltages)
 ```
-![alt text](Artwork/screen5.png "")
+![alt text](pyspyce/artwork/screen5.png "")
 
 
 ###Or Build Netlists Just As You Would in SPICE:###
