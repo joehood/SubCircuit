@@ -235,7 +235,7 @@ class QNPNBlock(sb.Block):
                    o C
                    |
                |---'
-        B o----+     NPN
+        B o----|     NPN
                |-->.
                    |
                    o E
