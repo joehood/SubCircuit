@@ -20,7 +20,8 @@ def import_devices(package="devices"):
     for modpath in modpaths:
         name, ext = modpath.split(".")
         if not name == "__init__" and ext == "py":
-            devicemods[name] = __import__(package + "." + name, fromlist=[name])
+            devicemods[name] = __import__("pyspyce." + package + "." + name,
+                                          fromlist=[name])
 
     for name, mod in devicemods.items():
         clsdefs = inspect.getmembers(mod, inspect.isclass)

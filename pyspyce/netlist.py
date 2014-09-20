@@ -3,7 +3,6 @@
 from __future__ import print_function
 from copy import deepcopy as clone
 
-from scipy.sparse import csc_matrix as smatrix
 import numpy as np
 import numpy.linalg as la
 
@@ -109,7 +108,6 @@ class Netlist():
         self.across_history = np.zeros(n)
         self.jac = np.zeros((n, n))
         self.bequiv = np.zeros(n)
-        self.sjac = smatrix((n-1, n-1))
 
         # setup devices:
         for device in self.devices.values():

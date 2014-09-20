@@ -17,6 +17,14 @@ import pyspyce.gui as gui
 import pyspyce.loader as load
 
 
+# region CONSTANTS
+
+ICONFILE = "pslogo.ico"
+DEF_SCHEM_NAME = "cir{0}"
+
+# endregion
+
+
 # region globals:
 
 engines = {}
@@ -24,6 +32,8 @@ blocks = {}
 
 # endregion
 
+
+#region Classes
 
 class PropertyGetter(gui.PropertyDialog):
     def __init__(self, parent, caption, properties, size=(300, 300)):
@@ -147,6 +157,7 @@ class SchematicWindow(wx.Panel):
         # drawing:
         self.SetDoubleBuffered(True)
         self.gc = None
+        self.dc = None
 
         # state:
         self.netlist = None
@@ -257,7 +268,11 @@ class SchematicWindow(wx.Panel):
     def on_left_up(self, event):
 
         # reset translation points:
-        self.x0, self.y0 = event.GetLogicalPosition(self.dc)
+        try:
+            self.x0, self.y0 = event.GetLogicalPosition(self.dc)
+        except:
+            pass
+
         self.x0_object, self.y0_object = self.x0, self.y0
 
         # get updated position:
@@ -1262,15 +1277,22 @@ class StatusStream:
 
 
 class MainFrame(gui.MainFrame):
-    DEF_NAME = "Cir{0}"
 
     def __init__(self):
+
+        # super:
         gui.MainFrame.__init__(self, None)
+
+        # schematic setup:
         self.schematics = {}
         self.schcnt = 1
         self.active_schem = None
 
-        # bindings:
+        # icon:
+        icon = wx.Icon(ICONFILE, wx.BITMAP_TYPE_ICO)
+        self.SetIcon(icon)
+
+        # additional bindings (others are in gui.py):
         self.Bind(aui.EVT_AUINOTEBOOK_PAGE_CLOSED, self.on_page_close,
                   self.ntb_main)
         self.Bind(aui.EVT__AUINOTEBOOK_TAB_RIGHT_DOWN, self.on_schem_context,
@@ -1311,7 +1333,7 @@ class MainFrame(gui.MainFrame):
 
     def new_schem(self, name=None):
         if not name:
-            name = MainFrame.DEF_NAME.format(self.schcnt) + ".sch"
+            name = DEF_SCHEM_NAME.format(self.schcnt) + ".sch"
             unique = False
             while not unique:
                 unique = True
@@ -1321,7 +1343,7 @@ class MainFrame(gui.MainFrame):
                         break
                 if not unique:
                     self.schcnt += 1
-                    name = MainFrame.DEF_NAME.format(self.schcnt) + ".sch"
+                    name = MainFrame.DEF_SCHEM_NAME.format(self.schcnt) + ".sch"
         self.schcnt += 1
         sch = sb.Schematic(name)
         schem = SchematicWindow(frame.ntb_main, sch)
@@ -1482,6 +1504,8 @@ class MainFrame(gui.MainFrame):
     def on_schem_context(self, event):
         pass
 
+# endregion
+
 
 if __name__ == '__main__':
 
@@ -1494,9 +1518,14 @@ if __name__ == '__main__':
     #frame.new_schem()
 
     # debug code:
-    # frame.open_schematic("/Users/josephmhood/Documents/bjt1.sch")
+    #frame.open_schematic("/Users/josephmhood/Documents/bjt1.sch")
     #frame.open_schematic("C:/Users/josephmhood/Desktop/Cir1.sch")
     #frame.run()
+
+    if wx.Platform == "__WXMSW__":  # if we're running on windows:
+        import ctypes
+        myappid = 'josephmhood.pyspyce.v01'
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
     frame.Show()
     app.MainLoop()

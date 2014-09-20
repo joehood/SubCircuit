@@ -1,7 +1,7 @@
 """Contains the functions for analysis and simulation for a SPICE network."""
 
 from __future__ import print_function, division
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import numpy
 from interfaces import *
 
@@ -202,15 +202,16 @@ class Simulator():
             plot_panel.on_paint()
 
         else:
-            plt.figure()
-            for curve in curves:
-                x, y, label = curve
-                plt.plot(x, y, label=label)
-                plt.title(self.netlist.title)
-                plt.legend()
-                plt.xlabel('t (s)')
-            if curves:
-                plt.show()
+            pass
+            # plt.figure()
+            # for curve in curves:
+            #     x, y, label = curve
+            #     plt.plot(x, y, label=label)
+            #     plt.title(self.netlist.title)
+            #     plt.legend()
+            #     plt.xlabel('t (s)')
+            # if curves:
+            #     plt.show()
 
         return plot_panel
 

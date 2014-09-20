@@ -51,7 +51,8 @@ class Editor(PyEdit):
     def __init__(self, parent, id, script):
         """Create a new PySpyce editor window, add to parent, and load script."""
         PyEdit.__init__(self, parent, id)
-        self.AddText(open(script).read())
+        if script:
+            self.AddText(open(script).read())
         self.setDisplayLineNumbers(True)
 
 
@@ -111,15 +112,15 @@ class MainFrame(ui.MainFrame):
     def __init__(self):
         """Create a new PySpyce GUI."""
         ui.MainFrame.__init__(self, None)
-        self.SetTitle("PySpyce Circuit Simulator")
-        icon = wx.Icon('Artwork/pyspyce256.ico', wx.BITMAP_TYPE_ICO)
-        self.SetIcon(icon)
+        #self.SetTitle("PySpyce Circuit Simulator")
+        #icon = wx.Icon('artwork/pyspyce256.ico', wx.BITMAP_TYPE_ICO)
+        #self.SetIcon(icon)
         self.debugger = Debugger()
 
-        self.script = 'examples.py'
+        #self.script = 'examples.py'
 
         # add editor:
-        self.editor = Editor(self.pnl_editor, 0, self.script)
+        self.editor = Editor(self.pnl_editor, 0, None)
         self.sizer_te = wx.BoxSizer(wx.VERTICAL)
         self.pnl_editor.SetSizer(self.sizer_te)
         self.sizer_te.Fit(self.pnl_editor)
