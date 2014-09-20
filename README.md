@@ -1,4 +1,4 @@
-![alt text](pyspyce/artwork/pyspyce128.png "") PySpyce Circuit Simulator
+![alt text](pyspyce/Artwork/pyspyce128.png "") PySpyce Circuit Simulator
 =========================
 
 
