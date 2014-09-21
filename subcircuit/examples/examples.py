@@ -1,6 +1,6 @@
 
 
-from netlist import *
+from subcircuit.netlist import *
 
 
 # netlist = Netlist("Series RLC")
@@ -54,7 +54,7 @@ RL 2 0 500
 .END
 """
 
-# netlist = Netlist("Example Transformer (PySpyce Netlist)")
+# netlist = Netlist("Example Transformer (Subcircuit Netlist)")
 # netlist.device("V1N", V((1, 0), Sin(0, 170, 60, 0, 0)))
 # netlist.device("L1", L((1, 0), 2000))
 # netlist.device("L2", L((2, 0), 200))

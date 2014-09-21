@@ -1,9 +1,9 @@
 """V (independant voltage source) device."""
 
 import math
-import pyspyce.interfaces as inter
-import pyspyce.sandbox as sb
-import pyspyce.stimuli as stim
+import subcircuit.interfaces as inter
+import subcircuit.sandbox as sb
+import subcircuit.stimuli as stim
 
 
 class V(inter.MNADevice, inter.CurrentSensor):

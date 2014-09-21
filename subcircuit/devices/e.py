@@ -1,7 +1,7 @@
 """E (Voltage controlled voltage source) Device."""
 
-import pyspyce.sandbox as sb
-import pyspyce.interfaces as inter
+import subcircuit.sandbox as sb
+import subcircuit.interfaces as inter
 
 
 class E(inter.MNADevice, inter.CurrentSensor):

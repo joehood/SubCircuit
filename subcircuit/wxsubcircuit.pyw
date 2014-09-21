@@ -1,4 +1,4 @@
-"""PySpyce interface for schematic development and simulation control."""
+"""Subcircuit interface for schematic development and simulation control."""
 
 from __future__ import print_function, division
 import pickle
@@ -11,16 +11,16 @@ from collections import OrderedDict as ODict
 import wx
 import wx.aui as aui
 
-import pyspyce.netlist as net
-import pyspyce.interfaces as inter
-import pyspyce.sandbox as sb
-import pyspyce.gui as gui
-import pyspyce.loader as load
+import subcircuit.netlist as net
+import subcircuit.interfaces as inter
+import subcircuit.sandbox as sb
+import subcircuit.gui as gui
+import subcircuit.loader as load
 
 
 # region CONSTANTS
 
-ICONFILE = "pslogo.ico"
+ICONFILE = "subcircuit.ico"
 DEF_SCHEM_NAME = "cir{0}"
 
 # endregion
@@ -58,7 +58,9 @@ class PropertyGetter(gui.PropertyDialog):
         self.Layout()
         self.SetMinSize(size)
 
-        self.propgrid.Bind(wx.EVT_KILL_FOCUS, self.OnKillFocus)
+        self.propgrid.Bind(wx.EVT_KILL_FOCUS, self.on_kill_focus)
+
+        self.result = wx.ID_CANCEL
 
     @classmethod
     def update_properties(cls, parent, caption, properties):
@@ -72,7 +74,7 @@ class PropertyGetter(gui.PropertyDialog):
                         properties[key] = value
         return properties
 
-    def OnKillFocus(self, event):
+    def on_kill_focus(self, event):
         # Cell editor's grandparent, the grid GridWindow's parent, is the grid.
         self.propgrid.SaveEditControlValue()
 
@@ -84,7 +86,7 @@ class PropertyGetter(gui.PropertyDialog):
                 value = self.propgrid.GetCellValue(i, 0)
                 try:
                     self.properties[key] = type_(value)
-                except:
+                except (ValueError, KeyError) as e:
                     pass
 
     def on_grid_update(self, event):
@@ -166,6 +168,7 @@ class SchematicWindow(wx.Panel):
         self.hit_blocks = []
         self.hit_ports = []
         self.hit_fields = []
+        self.hit_knees = []
         self.hit_connectors = []
         self.hit_connection_points = []
         self.hit_segments = []
@@ -201,7 +204,6 @@ class SchematicWindow(wx.Panel):
                 else:
                     self.blocks[new] = self.blocks.pop(old)
                     self.blocks[new].name = new
-
 
         elif self.hit_blocks:
             block = self.hit_blocks[0]
@@ -270,7 +272,7 @@ class SchematicWindow(wx.Panel):
         # reset translation points:
         try:
             self.x0, self.y0 = event.GetLogicalPosition(self.dc)
-        except:
+        except Exception as e:
             pass
 
         self.x0_object, self.y0_object = self.x0, self.y0
@@ -278,7 +280,6 @@ class SchematicWindow(wx.Panel):
         # get updated position:
         self.update_position(event)
         pt = self.x, self.y
-        spt = self.snap(pt)
 
         # get context:
         ctrl = event.ControlDown()
@@ -347,7 +348,6 @@ class SchematicWindow(wx.Panel):
                         self.deselect_all()
                     self.select_object(self.top_obj)
 
-
                 if isinstance(self.top_obj, sb.KneePoint):
                     if self.top_obj.selected:
                         self.start_connector(self.top_obj)
@@ -363,7 +363,6 @@ class SchematicWindow(wx.Panel):
 
             else:
                 self.deselect_all()
-
 
         elif self.mode == sb.Mode.CONNECT:
 
@@ -401,8 +400,8 @@ class SchematicWindow(wx.Panel):
         spt = self.snap(pt)
 
         # get context:
-        ctrl = event.ControlDown()
-        shft = event.ShiftDown()
+        # ctrl = event.ControlDown()
+        # shft = event.ShiftDown()
 
         # see what's hit:
         self.update_hit_objects(pt)
@@ -663,7 +662,6 @@ class SchematicWindow(wx.Panel):
                     if knee.hittest(pt):
                         hit_knees[knee.zorder] = knee
 
-
         # sort by zorder and dump into member lists:
 
         self.hit_ports = [obj for (z, obj) in
@@ -679,7 +677,7 @@ class SchematicWindow(wx.Panel):
                              reversed(sorted(hit_segments.items()))]
 
         self.hit_knees = [obj for (z, obj) in
-                               reversed(sorted(hit_knees.items()))]
+                          reversed(sorted(hit_knees.items()))]
 
         # the order these lists are added is key:
 
@@ -759,7 +757,8 @@ class SchematicWindow(wx.Panel):
             offset = i * spacing - extension / 2
             gc.StrokeLine(0 - extension / 2, offset, w, offset)
 
-    def get_bounding(self, path):
+    @staticmethod
+    def get_bounding(path):
         rect = path.GetBox()
         x, y = rect.GetLeftTop()
         w, h = rect.GetSize()
@@ -767,7 +766,8 @@ class SchematicWindow(wx.Panel):
         center = rect.GetCentre()
         return bounding, center
 
-    def snap(self, position):
+    @staticmethod
+    def snap(position):
         if position:
             x, y = position
             dx = x % sb.GRID_SIZE
@@ -854,8 +854,9 @@ class SchematicWindow(wx.Panel):
 
     def draw_block(self, block, gc):
 
-        font = wx.Font(sb.FONT_SIZE, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL,
-                       wx.FONTWEIGHT_BOLD, False, 'Courier 10 Pitch')
+        font = wx.Font(sb.FONT_SIZE, wx.FONTFAMILY_DEFAULT,
+                       wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD, False,
+                       "Courier 10 Pitch")
 
         if block.is_ghost:
             gc.SetPen(self.pen_ghost)
@@ -930,7 +931,6 @@ class SchematicWindow(wx.Panel):
             if stroke:
                 gc.SetPen(wx.Pen(stroke, 1))
                 gc.StrokePath(path)
-
 
         if block.plot_curves:
 
@@ -1027,7 +1027,6 @@ class SchematicWindow(wx.Panel):
                         gf = gc.CreateFont(font, sb.HOVER_COLOR)
                         force_show = True
 
-
             gc.SetFont(gf)
 
             (x, y), r, m = port.position, port.radius, port.hit_margin
@@ -1099,7 +1098,9 @@ class SchematicWindow(wx.Panel):
                 if len(knee.connectors) > 1 or draw:
                     path = gc.CreatePath()
 
-                    (x, y), r, m = self.snap(knee), sb.PORT_RADIUS, sb.PORT_HIT_MARGIN
+                    (x, y), r, m = (self.snap(knee), sb.PORT_RADIUS,
+                                    sb.PORT_HIT_MARGIN)
+
                     path.MoveToPoint(x, y)
                     path.AddCircle(x, y, r)
                     knee.bounding_rects[0] = (x-r-m, y-r-m, (r+m)*2, (r+m)*2)
@@ -1118,6 +1119,7 @@ class SchematicWindow(wx.Panel):
                 gc.FillPath(path)
 
     def draw(self, dc):
+        self.dc = dc
         w, h = self.dc.GetSize()
         gc = wx.GraphicsContext.Create(self.dc)
 
@@ -1191,8 +1193,8 @@ class SchematicWindow(wx.Panel):
         for connector in self.connectors:
             grp = []
             for connection in connector.get_connectoin_points():
-                for connector in connection.connectors:
-                    grp.append(connector)
+                for connector2 in connection.connectors:
+                    grp.append(connector2)
             grp = list(set(grp))
             connector_groups.append(grp)
 
@@ -1221,8 +1223,6 @@ class SchematicWindow(wx.Panel):
 
         for i, grp in enumerate(connector_groups):
             connector_groups[i] = list(set(grp))
-
-        a = 6
 
         # now build port groups:
 
@@ -1358,8 +1358,8 @@ class MainFrame(gui.MainFrame):
             self.active_schem.start_add(type_)
         else:
             msg = ("Cannot add device without a schematic. Create a new "
-            "schematic from Schematic > new, or load an existing schematic "
-            "from Schematic > open")
+                   "schematic from Schematic > new, or load an existing "
+                   "schematic from Schematic > open")
 
             wx.MessageBox(msg, "Add Device Error", parent=self)
 
@@ -1524,9 +1524,8 @@ if __name__ == '__main__':
 
     if wx.Platform == "__WXMSW__":  # if we're running on windows:
         import ctypes
-        myappid = 'josephmhood.pyspyce.v01'
+        myappid = 'josephmhood.subcircuit.v01'
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
     frame.Show()
     app.MainLoop()
-

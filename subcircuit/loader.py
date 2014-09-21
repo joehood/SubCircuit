@@ -20,7 +20,7 @@ def import_devices(package="devices"):
     for modpath in modpaths:
         name, ext = modpath.split(".")
         if not name == "__init__" and ext == "py":
-            devicemods[name] = __import__("pyspyce." + package + "." + name,
+            devicemods[name] = __import__("subcircuit." + package + "." + name,
                                           fromlist=[name])
 
     for name, mod in devicemods.items():

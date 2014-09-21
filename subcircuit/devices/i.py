@@ -1,8 +1,8 @@
 """Voltage Scope Device."""
 
-import pyspyce.sandbox as sb
-import pyspyce.interfaces as inter
-import pyspyce.stimuli as stim
+import subcircuit.sandbox as sb
+import subcircuit.interfaces as inter
+import subcircuit.stimuli as stim
 
 
 class I(inter.MNADevice):

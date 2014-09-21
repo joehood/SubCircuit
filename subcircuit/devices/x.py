@@ -1,16 +1,16 @@
 """X (resistor or semiconductor resistor) device."""
 
-import pyspyce.interfaces as inter
-import pyspyce.sandbox as sb
-from pyspyce.devices.c import C
-from pyspyce.devices.d import D
-from pyspyce.devices.e import E
-from pyspyce.devices.i import I
-from pyspyce.devices.k import K
-from pyspyce.devices.l import L
-from pyspyce.devices.r import R
-from pyspyce.devices.s import S
-from pyspyce.devices.v import V
+import subcircuit.interfaces as inter
+import subcircuit.sandbox as sb
+from subcircuit.devices.c import C
+from subcircuit.devices.d import D
+from subcircuit.devices.e import E
+from subcircuit.devices.i import I
+from subcircuit.devices.k import K
+from subcircuit.devices.l import L
+from subcircuit.devices.r import R
+from subcircuit.devices.s import S
+from subcircuit.devices.v import V
 
 
 class X(inter.MNADevice):

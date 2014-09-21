@@ -1,7 +1,7 @@
 """GND (Ground) device."""
 
 
-import pyspyce.sandbox as sb
+import subcircuit.sandbox as sb
 
 
 class GndBlock(sb.Block):

@@ -1,7 +1,7 @@
 """R (resistor or semiconductor resistor) device."""
 
-import pyspyce.interfaces as inter
-import pyspyce.sandbox as sb
+import subcircuit.interfaces as inter
+import subcircuit.sandbox as sb
 
 
 class R(inter.MNADevice):

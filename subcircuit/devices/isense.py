@@ -1,7 +1,7 @@
 """Current Scope Device."""
 
-import pyspyce.interfaces as inter
-import pyspyce.sandbox as sb
+import subcircuit.interfaces as inter
+import subcircuit.sandbox as sb
 
 
 class CurrentSensor(inter.MNADevice, inter.CurrentSensor):

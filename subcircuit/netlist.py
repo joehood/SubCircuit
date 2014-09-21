@@ -6,9 +6,9 @@ from copy import deepcopy as clone
 import numpy as np
 import numpy.linalg as la
 
-import pyspyce.devices.x
-import pyspyce.interfaces as inter
-import pyspyce.simulator as sim
+import subcircuit.devices.x
+import subcircuit.interfaces as inter
+import subcircuit.simulator as sim
 
 
 class Netlist():
@@ -94,7 +94,7 @@ class Netlist():
 
                     msg = "Subcircuit {0} not defined for device {1}."
                     msg.format(x_device.subckt, x_name)
-                    raise PySpyceError(msg)
+                    raise SubcircuitError(msg)
 
     def setup(self, dt):
         """Calls setup() on all of this subcircuit devices.
@@ -238,7 +238,7 @@ class Netlist():
         else:
             s = "Internal node name {0} is not unique."
             s.format(name)
-            raise PySpyceError(s)
+            raise SubcircuitError(s)
         return self.nodenum - 1
 
     def device(self, name, device):
@@ -299,7 +299,7 @@ class Netlist():
         pass
 
 
-class PySpyceError(Exception):
+class SubcircuitError(Exception):
     def __init__(self, msg):
         """Creates a new PySpyceError
         :param msg: Error message

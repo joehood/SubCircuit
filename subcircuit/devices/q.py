@@ -1,7 +1,7 @@
 """Q (BJT NPN and PNP) device models and interfaces."""
 
-import pyspyce.interfaces as inter
-import pyspyce.sandbox as sb
+import subcircuit.interfaces as inter
+import subcircuit.sandbox as sb
 import math
 
 

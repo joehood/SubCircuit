@@ -1,7 +1,7 @@
 """Stimuli definitions for independant sources."""
 
 import math
-import pyspyce.interfaces as inter
+import subcircuit.interfaces as inter
 
 
 class Pulse(inter.Stimulus):

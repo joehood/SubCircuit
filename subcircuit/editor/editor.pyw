@@ -1,13 +1,15 @@
 import sys
 import bdb
 
+import os
 import wx
 from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
 from matplotlib.figure import Figure
 from wx.py.editwindow import EditWindow as PyEdit
 from wx.py.shell import Shell as PyShell
 
-from pyspyce.editor import editor_ui as ui
+
+from subcircuit.editor import editor_ui as ui
 
 
 class Debugger(bdb.Bdb):
@@ -27,12 +29,13 @@ class Debugger(bdb.Bdb):
             message = "%s:%s" % (basename, lineno)
             if code.co_name != "?":
                 message = "%s: %s()" % (message, code.co_name)
-            print message
+            print(message)
             # sync_source_line()
             if frame and filename[:1] + filename[-1:] != "<>" and os.path.exists(filename):
                 if self.gui:
                     # we may be in other thread (i.e. debugging web2py)
-                    wx.PostEvent(self.gui, DebugEvent(filename, lineno))
+                    # wx.PostEvent(self.gui, DebugEvent(filename, lineno))
+                    pass
 
             # wait user events:
             self.waiting = True
@@ -46,10 +49,10 @@ class Debugger(bdb.Bdb):
 
 
 class Editor(PyEdit):
-    """PySpyce Editor"""
+    """Subcircuit Editor"""
 
     def __init__(self, parent, id, script):
-        """Create a new PySpyce editor window, add to parent, and load script."""
+        """Create a new Subcircuit editor window, add to parent, and load script."""
         PyEdit.__init__(self, parent, id)
         if script:
             self.AddText(open(script).read())
@@ -57,7 +60,7 @@ class Editor(PyEdit):
 
 
 class Interactive(PyShell):
-    """PySpyce interactive window."""
+    """Subcircuit interactive window."""
 
     def __init__(self, parent, id, debugger):
         """ """
@@ -107,13 +110,13 @@ class PlotPanel(wx.Panel):
 
 
 class MainFrame(ui.MainFrame):
-    """PySpyce Main GUI Frame."""
+    """Suncircuit Main GUI Frame."""
 
     def __init__(self):
-        """Create a new PySpyce GUI."""
+        """Create a new Subcircuit GUI."""
         ui.MainFrame.__init__(self, None)
-        #self.SetTitle("PySpyce Circuit Simulator")
-        #icon = wx.Icon('artwork/pyspyce256.ico', wx.BITMAP_TYPE_ICO)
+        #self.SetTitle("Subcircuit Simulator")
+        #icon = wx.Icon('artwork/logo.ico', wx.BITMAP_TYPE_ICO)
         #self.SetIcon(icon)
         self.debugger = Debugger()
 
@@ -137,7 +140,7 @@ class MainFrame(ui.MainFrame):
 
     def on_run(self, event):
         filename = self.script
-        self.interactive.run('from pyspyce import *')
+        self.interactive.run('from subcircuit import *')
         self.interactive.run('set_integrated_mode(True)')
         globals()['plot_notebook'] = self.ntb_top
         self.interactive.run('set_plot_notebook(plot_notebook)')
@@ -156,10 +159,10 @@ class MainFrame(ui.MainFrame):
 
 
 def main():
-    """PySpyce Main Function"""
+    """Subcircuit Main Function"""
     # force this app to be the main process (above Python.exe).
 
-    myappid = 'pyspyce'
+    myappid = 'subcircuit'
     # ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     # Start GUI:
     app = wx.App()
