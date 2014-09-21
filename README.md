@@ -1,4 +1,6 @@
-![alt text](subcircuit/artwork/logo128.png "") SubCircuit: A Python Based Circuit Simulator
+![alt text](subcircuit/artwork/logo128.png "") 
+
+SubCircuit: A Python Based Circuit Simulator
 =========================
 
 
