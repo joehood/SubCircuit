@@ -113,7 +113,7 @@ class MainFrame(ui.MainFrame):
         """Create a new PySpyce GUI."""
         ui.MainFrame.__init__(self, None)
         #self.SetTitle("PySpyce Circuit Simulator")
-        #icon = wx.Icon('image/pyspyce256.ico', wx.BITMAP_TYPE_ICO)
+        #icon = wx.Icon('artwork/pyspyce256.ico', wx.BITMAP_TYPE_ICO)
         #self.SetIcon(icon)
         self.debugger = Debugger()
 

@@ -6,6 +6,7 @@ import os
 import sys
 import math
 from copy import deepcopy as clone
+from collections import OrderedDict as ODict
 
 import wx
 import wx.aui as aui
@@ -70,7 +71,6 @@ class PropertyGetter(gui.PropertyDialog):
                     if type_ is type(properties[key]):
                         properties[key] = value
         return properties
-
 
     def OnKillFocus(self, event):
         # Cell editor's grandparent, the grid GridWindow's parent, is the grid.
@@ -1515,7 +1515,7 @@ if __name__ == '__main__':
     frame = MainFrame()
     frame.SetSize((800, 600))
     frame.SetPosition((100, 100))
-    #frame.new_schem()
+    frame.new_schem()
 
     # debug code:
     #frame.open_schematic("/Users/josephmhood/Documents/bjt1.sch")

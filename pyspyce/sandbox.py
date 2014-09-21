@@ -5,6 +5,7 @@ from collections import OrderedDict as ODict
 
 import wx
 
+
 # region Constants
 
 # default settings:
@@ -31,6 +32,13 @@ CONNECTOR_HIT_MARGIN = 10
 PORT_HIT_MARGIN = 10
 PORT_RADIUS = 3
 SNAP_TO_GRID = True
+DEF_SIM_SETTINGS = ODict()
+DEF_SIM_SETTINGS["dt"] = 0.001
+DEF_SIM_SETTINGS["tmax"] = 0.1
+DEF_SIM_SETTINGS["maxitr"] = 200
+DEF_SIM_SETTINGS["tol"] = 0.00001
+DEF_SIM_SETTINGS["voltages"] = ""
+DEF_SIM_SETTINGS["currents"] = ""
 
 # endregion
 
@@ -303,8 +311,7 @@ class Schematic(object):
         self.name = name
         self.blocks = {}
         self.connectors = []
-        self.sim_settings = {'dt': 0.01, 'tmax': 10.0, 'maxitr': 100,
-                             'tol': 0.00001, 'voltages': "2", 'currents': "V1"}
+        self.sim_settings = DEF_SIM_SETTINGS
 
 
 def distance(line, point):
