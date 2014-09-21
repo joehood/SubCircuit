@@ -2,15 +2,6 @@
 
 import subcircuit.interfaces as inter
 import subcircuit.sandbox as sb
-from subcircuit.devices.c import C
-from subcircuit.devices.d import D
-from subcircuit.devices.e import E
-from subcircuit.devices.i import I
-from subcircuit.devices.k import K
-from subcircuit.devices.l import L
-from subcircuit.devices.r import R
-from subcircuit.devices.s import S
-from subcircuit.devices.v import V
 
 
 class X(inter.MNADevice):
