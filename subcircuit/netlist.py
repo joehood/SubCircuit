@@ -1,4 +1,19 @@
-"""Contains Circuit and SubCircuit class definitions."""
+"""Contains Circuit and SubCircuit class definitions.
+
+Copyright 2014 Joe Hood
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+"""
 
 from __future__ import print_function
 from copy import deepcopy as clone
@@ -94,7 +109,7 @@ class Netlist():
 
                     msg = "Subcircuit {0} not defined for device {1}."
                     msg.format(x_device.subckt, x_name)
-                    raise SubcircuitError(msg)
+                    raise SubCircuitError(msg)
 
     def setup(self, dt):
         """Calls setup() on all of this subcircuit devices.
@@ -238,7 +253,7 @@ class Netlist():
         else:
             s = "Internal node name {0} is not unique."
             s.format(name)
-            raise SubcircuitError(s)
+            raise SubCircuitError(s)
         return self.nodenum - 1
 
     def device(self, name, device):
@@ -299,7 +314,7 @@ class Netlist():
         pass
 
 
-class SubcircuitError(Exception):
+class SubCircuitError(Exception):
     def __init__(self, msg):
         """Creates a new PySpyceError
         :param msg: Error message

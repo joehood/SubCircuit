@@ -1,4 +1,19 @@
-"""Subcircuit interface for schematic development and simulation control."""
+"""Subcircuit interface for schematic development and simulation control.
+
+Copyright 2014 Joe Hood
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+"""
 
 from __future__ import print_function, division
 import pickle
@@ -35,6 +50,8 @@ DEF_SCHEM_NAME = "cir{0}"
 
 engines = {}
 blocks = {}
+schematics = {}
+active_schematic = None
 
 # endregion
 
@@ -285,6 +302,8 @@ class SchematicWindow(wx.Panel):
 
         # arm the schematic:
         self.mode = sb.Mode.STANDBY
+
+        self.netlist = None
 
     def on_size(self, event):
         pass
@@ -1370,26 +1389,22 @@ class SchematicWindow(wx.Panel):
         return netlist
 
 
-class StatusStream:
-    def __init__(self, statusbar):
-        self.statusbar = statusbar
-
-    def write(self, string):
-        if string.strip():
-            self.statusbar.SetStatusText(string)
-
-
 class MainFrame(gui.MainFrame):
 
     def __init__(self):
+
+        global schematics, active_schematic
 
         # super:
         gui.MainFrame.__init__(self, None)
 
         # schematic setup:
         self.schematics = {}
+        schematics = self.schematics
+
         self.schcnt = 1
         self.active_schem = None
+        active_schematic = self.active_schem
 
         # icon:
         icon = wx.Icon(ICONFILE, wx.BITMAP_TYPE_ICO)
@@ -1436,6 +1451,10 @@ class MainFrame(gui.MainFrame):
         self.szr_shell.Add(self.interactive, 1, wx.EXPAND | wx.ALL, 5)
 
         self.interactive.push("from subcircuit.netlist import Netlist", silent=False)
+
+        text = "type subcircuit.run() to run"
+
+        self.interactive.push("print('{0}')".format(text))
         sys.stdout = self.interactive
         sys.stderr = self.interactive
 
@@ -1464,13 +1483,10 @@ class MainFrame(gui.MainFrame):
                                           fromlist=[clsname])
                 setattr(this, clsname, imported_cls)
 
-
         self.statusbar.SetStatusText("Ready")
 
-        self.status_stream = StatusStream(self.statusbar)
-        #sys.stdout = self.status_stream
-
     def new_schem(self, name=None):
+        global active_schematic
         if not name:
             name = DEF_SCHEM_NAME.format(self.schcnt) + ".sch"
             unique = False
@@ -1485,10 +1501,11 @@ class MainFrame(gui.MainFrame):
                     name = MainFrame.DEF_SCHEM_NAME.format(self.schcnt) + ".sch"
         self.schcnt += 1
         sch = sb.Schematic(name)
-        schem = SchematicWindow(frame.ntb_editor, sch)
+        schem = SchematicWindow(subcircuit.ntb_editor, sch)
         self.ntb_editor.AddPage(schem, name, select=True)
         self.schematics[name] = schem
         self.active_schem = schem
+        active_schematic = self.active_schem
         schem.path = None
         return schem
 
@@ -1519,19 +1536,21 @@ class MainFrame(gui.MainFrame):
             wx.MessageBox("File save failed. {0}".format(e.message))
 
     def open_schematic(self, path):
+        global active_schematic
         d, name = os.path.split(path)
         f = open(path)
         sch = pickle.load(f)
         sch.name = name
         sch.path = path
-        schem = SchematicWindow(frame.ntb_editor, sch)
+        schem = SchematicWindow(subcircuit.ntb_editor, sch)
         self.schematics[name] = schem
         self.active_schem = schem
+        active_schematic = self.active_schem
         self.ntb_editor.AddPage(schem, name, select=True)
 
     def run(self):
         if self.active_schem:
-            netlist = self.active_schem.build_netlist()
+            self.netlist = self.active_schem.build_netlist()
 
             settings = self.active_schem.sim_settings
 
@@ -1542,7 +1561,7 @@ class MainFrame(gui.MainFrame):
             voltages = settings['voltages']
             currents = settings['currents']
 
-            netlist.trans(dt, tmax)
+            self.netlist.trans(dt, tmax)
 
             for block in self.active_schem.blocks.values():
                 block.end()
@@ -1555,7 +1574,7 @@ class MainFrame(gui.MainFrame):
             for i in currents.split():
                 chans.append(inter.Current(i.strip()))
 
-            netlist.plot(*chans)
+            self.netlist.plot(*chans)
 
             self.active_schem.Refresh()
 
@@ -1643,6 +1662,7 @@ class MainFrame(gui.MainFrame):
     def on_schem_context(self, event):
         pass
 
+
 # endregion
 
 
@@ -1651,10 +1671,10 @@ if __name__ == '__main__':
     blocks, engines = load.import_devices("devices")
 
     app = wx.App()
-    frame = MainFrame()
-    frame.SetSize((800, 600))
-    frame.SetPosition((100, 100))
-    frame.new_schem()
+    subcircuit = MainFrame()
+    subcircuit.SetSize((800, 600))
+    subcircuit.SetPosition((100, 100))
+    subcircuit.new_schem()
 
     # debug code:
     #frame.open_schematic("/Users/josephmhood/Documents/bjt1.sch")
@@ -1666,7 +1686,7 @@ if __name__ == '__main__':
         myappid = 'josephmhood.subcircuit.v01'
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
-    frame.Show()
+    subcircuit.Show()
     app.MainLoop()
 
 
