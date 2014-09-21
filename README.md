@@ -1,11 +1,9 @@
-![alt text](pyspyce/Artwork/pyspyce128.png "") PySpyce Circuit Simulator
+![alt text](subcircuit/artwork/logo128.png "") SubCircuit: A Python Based Circuit Simulator
 =========================
 
 
-![alt text](pyspyce/artwork/screen1.png "")
+![alt text](subcircuit/artwork/screen1.png "")
 
-
-Python Implementation of SPICE Circuit Simulator. 
 
 Requires Python 2.7, Scipy Stack and wxPython.
 
@@ -23,15 +21,15 @@ PySpyce allows the creation of netlists through a schematic editor or directly w
 
 On a Mac:
 
-![alt text](pyspyce/artwork/screen2.png "")
+![alt text](subcircuit/artwork/screen2.png "")
 
 On Windows:
 
-![alt text](pyspyce/artwork/screen3.png "")
+![alt text](subcircuit/artwork/screen3.png "")
 
 Plotting:
 
-![alt text](pyspyce/artwork/screen4.png "")
+![alt text](subcircuit/artwork/screen4.png "")
 
 ###Programmatic Netlist Development:###
 
@@ -64,7 +62,7 @@ for i in range(1, 9):
 
 netlist.plot(*voltages)
 ```
-![alt text](pyspyce/artwork/screen5.png "")
+![alt text](subcircuit/artwork/screen5.png "")
 
 
 ###Or Build Netlists Just As You Would in SPICE:###
@@ -85,7 +83,7 @@ RL 2 0 500
 .END
 """
 
-# Equivalent PySpyce Netlist:
+# Equivalent Subcircuit Netlist:
 
 netlist = Netlist("Example Transformer")
 netlist.device("V1N", V((1, 0), Sin(0, 170, 60, 0, 0)))
@@ -96,92 +94,6 @@ netlist.device("RL", R((2, 0), 500.0))
 netlist.trans(0.00002, 0.025)
 netlist.plot(Voltage(1), Voltage(2))
 ```
-
-###Custom Device Creation###
-
-Defining a device and it's schematic object is straight-forward. Here is an example (Voltage source):
-
-```python
-class VBlock(Block):
-    def __init__(self, name):
-
-        # init super:
-        Block.__init__(self, name, V)
-
-        # ports:
-        self.ports['positive'] = Port(self, 0, (50, 0))
-        self.ports['negative'] = Port(self, 1, (50, 100))
-
-        # properties:
-        self.properties['Voltage (V)'] = 1.0
-
-        # leads:
-        self.lines.append(((50, 0), (50, 25)))
-        self.lines.append(((50, 75), (50, 100)))
-
-        # plus:
-        self.lines.append(((50, 33), (50, 43)))
-        self.lines.append(((45, 38), (55, 38)))
-
-        # circle
-        self.circles.append((50, 50, 25))
-
-    def get_engine(self, nodes):
-        return V(nodes, self.properties['Voltage (V)'])
-        
-        
-        
-class V(Device, CurrentSensor):
-
-    def __init__(self, nodes, value, res=0.0, induct=0.0, **kwargs):
-    
-        Device.__init__(self, nodes, 1, **kwargs)
-
-        # determine type of value provided:
-        if isinstance(value, Stimulus):
-            self.stimulus = value
-            self.stimulus.device = self
-        elif isinstance(value, float) or isinstance(value, int):
-            self.stimulus = None
-            self.value = float(value)
-
-        self.res = res
-        self.induct = induct
-
-    def connect(self):
-        nplus, nminus = self.nodes
-        self.port2node = {0: self.get_node_index(nplus),
-                          1: self.get_node_index(nminus),
-                          2: self.create_internal("{0}_int".format(self.name))}
-
-    def start(self, dt):
-
-        self.jac[0, 2] = 1.0
-        self.jac[1, 2] = -1.0
-        self.jac[2, 0] = 1.0
-        self.jac[2, 1] = -1.0
-        self.jac[2, 2] = -(self.res + self.induct / dt)
-
-        volt = 0.0
-        if self.stimulus:
-            volt = self.stimulus.start(dt)
-        elif self.value:
-            volt = self.value
-
-        self.bequiv[2] = volt
-
-    def step(self, dt, t):
-
-        if self.stimulus:
-            volt = self.stimulus.step(dt, t)
-        else:
-            volt = self.value
-
-        if self.induct:
-            il = self.get_across_history(2)
-            volt += self.induct / dt * il
-
-        self.bequiv[2] = volt
 
     def get_current_node(self):
         return self.port2node[2]
