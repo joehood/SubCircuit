@@ -94,8 +94,3 @@ netlist.device("RL", R((2, 0), 500.0))
 netlist.trans(0.00002, 0.025)
 netlist.plot(Voltage(1), Voltage(2))
 ```
-
-    def get_current_node(self):
-        return self.port2node[2]
-```
-
