@@ -21,7 +21,6 @@ from copy import deepcopy as clone
 import numpy as np
 import numpy.linalg as la
 
-import subcircuit.devices.x
 import subcircuit.interfaces as inter
 import subcircuit.simulator as sim
 

@@ -21,7 +21,6 @@ import os
 import sys
 import math
 from copy import deepcopy as clone
-from collections import OrderedDict as ODict
 import bdb
 
 import wx
@@ -1413,6 +1412,7 @@ class MainFrame(gui.MainFrame):
         # additional bindings (others are in gui.py):
         self.Bind(aui.EVT_AUINOTEBOOK_PAGE_CLOSED, self.on_page_close,
                   self.ntb_editor)
+
         self.Bind(aui.EVT__AUINOTEBOOK_TAB_RIGHT_DOWN, self.on_schem_context,
                   self.ntb_editor)
 
@@ -1441,28 +1441,23 @@ class MainFrame(gui.MainFrame):
 
         self.menu.Append(self.menu_blocks, "Blocks")
 
-
         # add interactive window:
         self.debugger = Debugger()
-        self.interactive = Interactive(self.pnl_shell, 0, self.debugger)
         self.szr_shell = wx.BoxSizer(wx.VERTICAL)
         self.pnl_shell.SetSizer(self.szr_shell)
+        self.interactive = Interactive(self.pnl_shell, 0, self.debugger)
         self.szr_shell.Fit(self.pnl_shell)
         self.szr_shell.Add(self.interactive, 1, wx.EXPAND | wx.ALL, 5)
 
-        self.interactive.push("from subcircuit.netlist import Netlist", silent=False)
+        self.interactive.push("from subcircuit.netlist import Netlist",
+                              silent=False)
 
-        text = "type subcircuit.run() to run"
-
-        self.interactive.push("print('{0}')".format(text))
+        #self.interactive.push("print('{0}')".format(text))
         sys.stdout = self.interactive
         sys.stderr = self.interactive
 
-        w, h = self.GetSize()
-        self.SetSize((w+1, h+1))
-
         # load engine classes into namespace so they're accessible to scripts
-        # and subcircuit definitions. The following routine loads all of the
+        # and subcircuit definitions. The following call loads all of the
         # found device engines into this module's namespace, and has the same
         # affect as if the following type of import statement was made for
         # all device engines in the device package:
@@ -1475,15 +1470,11 @@ class MainFrame(gui.MainFrame):
         #
         # netlist.device("R1", R([1, 0], value=1.0))
 
-        engine_classes = load.get_engine_classes()
-        this = sys.modules[__name__]
-        for mod, classes in engine_classes.items():
-            for clsname in classes:
-                imported_cls = __import__("subcircuit.devices." + mod,
-                                          fromlist=[clsname])
-                setattr(this, clsname, imported_cls)
+        load.load_engines_to_module(sys.modules[__name__])
 
         self.statusbar.SetStatusText("Ready")
+
+        self.Refresh()
 
     def new_schem(self, name=None):
         global active_schematic
@@ -1498,7 +1489,7 @@ class MainFrame(gui.MainFrame):
                         break
                 if not unique:
                     self.schcnt += 1
-                    name = MainFrame.DEF_SCHEM_NAME.format(self.schcnt) + ".sch"
+                    name = DEF_SCHEM_NAME.format(self.schcnt) + ".sch"
         self.schcnt += 1
         sch = sb.Schematic(name)
         schem = SchematicWindow(subcircuit.ntb_editor, sch)
@@ -1507,6 +1498,9 @@ class MainFrame(gui.MainFrame):
         self.active_schem = schem
         active_schematic = self.active_schem
         schem.path = None
+
+        self.szr_shell.Fit(self.pnl_shell)
+        
         return schem
 
     def add_device(self, type_):
@@ -1688,55 +1682,3 @@ if __name__ == '__main__':
 
     subcircuit.Show()
     app.MainLoop()
-
-
-
-"""
-class MainFrame(ui.MainFrame):
-
-    def __init__(self):
-
-        ui.MainFrame.__init__(self, None)
-        #self.SetTitle("Subcircuit Simulator")
-        #icon = wx.Icon('artwork/logo.ico', wx.BITMAP_TYPE_ICO)
-        #self.SetIcon(icon)
-        self.debugger = Debugger()
-
-        #self.script = 'examples.py'
-
-        # add editor:
-        self.editor = Editor(self.pnl_editor, 0, None)
-        self.sizer_te = wx.BoxSizer(wx.VERTICAL)
-        self.pnl_editor.SetSizer(self.sizer_te)
-        self.sizer_te.Fit(self.pnl_editor)
-        self.sizer_te.Add(self.editor, 1, wx.EXPAND | wx.ALL, 5)
-
-        # add interactive window:
-        self.interactive = Interactive(self.pnl_shell, 0, self.debugger)
-        self.szr_shell = wx.BoxSizer(wx.VERTICAL)
-        self.pnl_shell.SetSizer(self.szr_shell)
-        self.szr_shell.Fit(self.pnl_shell)
-        self.szr_shell.Add(self.interactive, 1, wx.EXPAND | wx.ALL, 5)
-
-        # self.add_plot(([1,2,3], [3,4,5], 'label'))
-
-    def on_run(self, event):
-        filename = self.script
-        self.interactive.run('from subcircuit import *')
-        self.interactive.run('set_integrated_mode(True)')
-        globals()['plot_notebook'] = self.ntb_top
-        self.interactive.run('set_plot_notebook(plot_notebook)')
-        self.interactive.runfile(filename)
-        self.status_bar.SetStatusText('Running script: [{0}].'.format(filename))
-        self.Layout()
-        self.ntb_top.Layout()
-        p = self.m_splitter1.GetSashPosition()
-        self.m_splitter1.SetSashPosition(p + 1)
-
-    def add_plot(self, *curves):
-        plot_panel = PlotPanel(self.ntb_top)
-        self.ntb_top.AddPage(plot_panel, 'Plot', True)
-        plot_panel.set_data(curves)
-        plot_panel.draw()
-
-"""

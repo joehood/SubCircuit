@@ -17,6 +17,12 @@ limitations under the License.
 
 import subcircuit.interfaces as inter
 import subcircuit.sandbox as sb
+from subcircuit.loader import load_engines_to_module
+import sys
+
+
+#  Suncircuit instance device needs access to all other devices:
+load_engines_to_module(sys.modules[__name__])
 
 
 class X(inter.MNADevice):
@@ -86,10 +92,11 @@ class XBlock2Port(sb.Block):
             devicedef = self.properties["Device {0}".format(i)]
             if devicedef.strip():
                 try:
+                    # this is the fun part where we try to evaluate the
+                    # strings and turn it into a device record...
                     device = eval(devicedef, globals(), locals())
                     subckt.device(devicedef, device)
                 except Exception as e:
                     print(e.message)
 
         return X(nodes, self.properties['Subckt Name'])
-

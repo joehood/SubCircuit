@@ -15,10 +15,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-import subcircuit.sandbox as sb
-import subcircuit.interfaces as inter
 import wx
 
+import subcircuit.sandbox as sb
+import subcircuit.interfaces as inter
 
 
 class Scope5(inter.SignalDevice):

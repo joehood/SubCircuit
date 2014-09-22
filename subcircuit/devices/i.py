@@ -17,7 +17,6 @@ limitations under the License.
 
 import subcircuit.sandbox as sb
 import subcircuit.interfaces as inter
-import subcircuit.stimuli as stim
 
 
 class I(inter.MNADevice):
