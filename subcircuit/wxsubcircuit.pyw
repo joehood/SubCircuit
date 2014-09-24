@@ -25,6 +25,7 @@ import bdb
 
 import wx
 import wx.aui as aui
+import wx.stc as stc
 from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
 from matplotlib.figure import Figure
 from wx.py.editwindow import EditWindow as PyEdit
@@ -51,6 +52,7 @@ engines = {}
 blocks = {}
 schematics = {}
 active_schematic = None
+is_windows = True
 
 # endregion
 
@@ -217,8 +219,25 @@ class PropertyGetter(gui.PropertyDialog):
         self.Destroy()
 
 
+class BlockDropTarget(wx.TextDropTarget):
+    def __init__(self, parent):
+        wx.TextDropTarget.__init__(self)
+        self.schematic_window = parent
+
+    def OnDropText(self, x, y, name):
+        name = self.strip_non_ascii(name).strip( )
+        self.schematic_window.start_add(name, position=(x, y))
+        self.schematic_window.Refresh()
+
+    def strip_non_ascii(self, s):
+        ascii = [c for c in s if (32 <= ord(c) < 127)]
+        return ''.join(ascii)
+
+
 class SchematicWindow(wx.Panel):
     def __init__(self, parent, schematic=None, name=""):
+
+        self.parent = parent
 
         self.path = ""
 
@@ -237,6 +256,11 @@ class SchematicWindow(wx.Panel):
 
         # init super:
         wx.Panel.__init__(self, parent)
+
+        # set drop target so blocks can be dropped:
+        self.SetDropTarget(BlockDropTarget(self))
+
+        # must do this for double buffering:
         self.SetBackgroundColour(sb.BG_COLOR)
 
         # bindings:
@@ -276,7 +300,8 @@ class SchematicWindow(wx.Panel):
         self.pen_select.Cap = wx.CAP_ROUND
 
         # drawing:
-        self.SetDoubleBuffered(True)
+        if is_windows:
+            self.SetDoubleBuffered(True)
         self.gc = None
         self.dc = None
 
@@ -301,6 +326,8 @@ class SchematicWindow(wx.Panel):
 
         # arm the schematic:
         self.mode = sb.Mode.STANDBY
+
+        self.deselect_all(clean=True)
 
         self.netlist = None
 
@@ -393,7 +420,7 @@ class SchematicWindow(wx.Panel):
         # reset translation points:
         try:
             self.x0, self.y0 = event.GetLogicalPosition(self.dc)
-        except Exception as e:
+        except:
             pass
 
         self.x0_object, self.y0_object = self.x0, self.y0
@@ -572,6 +599,8 @@ class SchematicWindow(wx.Panel):
         if sb.SNAP_TO_GRID:
             spt = self.snap(pt)
 
+        x, y = spt
+
         # determine context:
         dragging = event.Dragging()
         leftdown = event.LeftIsDown()
@@ -584,8 +613,6 @@ class SchematicWindow(wx.Panel):
         # STATE MACHINE:
 
         if self.mode == sb.Mode.CONNECT:
-
-            x, y = spt
 
             if sb.ORTHO_CONNECTORS:
                 x0, y0 = self.active_connector.get_last_point()
@@ -613,10 +640,11 @@ class SchematicWindow(wx.Panel):
 
             elif self.ghost_knee_segment:
                 self.ghost_knee_segment.ghost_knee = None
+                self.ghost_knee_segment = None
 
         if self.mode == sb.Mode.ADD_BLOCK:
 
-            self.ghost.position = spt
+            self.ghost.position = (x - 60, y - 60)
 
         elif self.mode == sb.Mode.STANDBY:
 
@@ -695,7 +723,7 @@ class SchematicWindow(wx.Panel):
                             if obj in port.connectors:
                                 port.connectors.remove(obj)
                     for connector in self.connectors:
-                        for connection in connector.get_connectoin_points():
+                        for connection in connector.get_connection_points():
                             if obj in connection.connectors:
                                 connection.connectors.remove(obj)
                 elif isinstance(obj, sb.KneePoint):
@@ -823,16 +851,32 @@ class SchematicWindow(wx.Panel):
         self.blocks[key] = block
         self.blocks[key].position = position
 
-    def deselect_all(self):
+    def deselect_all(self, clean=False):
+
         for obj in self.selected_objects:
             obj.selected = False
+
+        if clean:
+            for block in self.blocks.values():
+                block.selected = False
+                for port in block.ports.values():
+                    port.selected = False
+            for connector in self.connectors:
+                connector.selected = False
+                for seg in connector.segments:
+                    seg.selected = False
+                for knee in connector.knees:
+                    knee.selected = False
+
         self.selected_objects = []
 
-    def start_add(self, type_=None, name=None):
+    def start_add(self, type_=None, name=None, position=(0, 0)):
 
         # get the block definition from the global block dict:
         cls = blocks[type_]
         label = cls.label
+
+        x0, y0 = position
 
         if not type_:
             type_ = sb.DEF_DEVICE
@@ -857,7 +901,7 @@ class SchematicWindow(wx.Panel):
         self.mode = sb.Mode.ADD_BLOCK
         self.blocks[key] = self.ghost
         self.ghost.is_ghost = True
-        self.ghost.translate((-50, -50))  # center mouse on device
+        self.ghost.translate((x0 - 60, y0 - 60))
         self.SetFocus()
 
     def draw_grid(self, gc):
@@ -1313,7 +1357,7 @@ class SchematicWindow(wx.Panel):
         connector_groups = []
         for connector in self.connectors:
             grp = []
-            for connection in connector.get_connectoin_points():
+            for connection in connector.get_connection_points():
                 for connector2 in connection.connectors:
                     grp.append(connector2)
             grp = list(set(grp))
@@ -1387,29 +1431,138 @@ class SchematicWindow(wx.Panel):
 
         return netlist
 
+    def get_netlist_code(self, name, netlist_mod_name=None):
+
+        netlist = self.build_netlist()
+
+        code = ""
+        if netlist_mod_name:
+            code += '{0} = {1}.Netlist("{0}")'.format(name, netlist_mod_name)
+        else:
+            code += '{0} = Netlist("{0}")'.format(name)
+        for dname, device in netlist.devices.items():
+            code += '\n{0}.device("{1}", {2})'.format(name, dname,
+                                                  device.get_code_string())
+        return code
+
+
+class DeviceTree(wx.TreeCtrl):
+    def __init__(self, parent, blocks):
+
+        style = (wx.TR_FULL_ROW_HIGHLIGHT |
+                 wx.TR_HAS_BUTTONS |
+                 wx.TR_HIDE_ROOT |
+                 wx.TR_HAS_VARIABLE_ROW_HEIGHT)
+
+        wx.TreeCtrl.__init__(self, parent, style=style)
+        self.blocks = blocks
+
+        #for name, device_type in self.devices.items():
+        self.root = self.AddRoot("Library")
+        self.root.device_type = None
+
+        images = load.get_block_images(blocks, color='black')
+        images_sel = load.get_block_images(blocks, color='white', width=7)
+
+        w, h = 36, 36
+
+        imagelist = wx.ImageList(w, h)
+        self.imagemap = {}
+
+        for name in images:
+            image = images[name].Scale(w, h, wx.IMAGE_QUALITY_BICUBIC)
+            image_sel = images_sel[name].Scale(w, h, wx.IMAGE_QUALITY_BICUBIC)
+            self.imagemap[name] = (
+                imagelist.Add(image.ConvertToBitmap()),
+                imagelist.Add(image_sel.ConvertToBitmap()))
+
+        self.AssignImageList(imagelist)
+
+        famnodes = {}
+
+        for name, device_type in self.blocks.items():
+            family = device_type.family
+            if not family in famnodes:
+                famnodes[family] = self.AppendItem(self.root, family)
+                famnodes[family].device_type = None
+            if name in self.imagemap:
+                index, index_sel = self.imagemap[name]
+            else:
+                index, index_sel = -1, -1
+            item = self.AppendItem(famnodes[family], name, index, index_sel)
+            self.SetItemPyData(item, name)
+
+
+        # bindings:
+        self.Bind(wx.EVT_TREE_BEGIN_DRAG, self.on_begin_drag)
+        self.Bind(wx.EVT_TREE_SEL_CHANGED, self.on_selection_changed)
+
+        self.selected_item = None
+
+        self.ExpandAll()
+
+    def on_begin_drag(self, event):
+        if self.selected_item:
+            name = self.GetItemPyData(self.selected_item)
+            drag_source = wx.DropSource(self)
+            dataobj = wx.TextDataObject(name)
+            dataobj.device_type = name
+            drag_source.SetData(dataobj)
+            drag_source.DoDragDrop(True)
+
+    def on_selection_changed(self, event):
+        self.selected_item = event.GetItem()
+
 
 class MainFrame(gui.MainFrame):
 
-    def __init__(self):
+    def __init__(self, redirect=False):
 
         global schematics, active_schematic
 
-        # super:
+        # call super:
+
         gui.MainFrame.__init__(self, None)
 
-        # schematic setup:
-        self.schematics = {}
-        schematics = self.schematics
+        self.imagelist = wx.ImageList(16, 16)
 
-        self.schcnt = 1
-        self.active_schem = None
-        active_schematic = self.active_schem
+        image = wx.Image("artwork/pylogo16.gif", wx.BITMAP_TYPE_GIF)
+        self.pylogo16 = self.imagelist.Add(image.ConvertToBitmap())
 
-        # icon:
+        image = wx.Image("artwork/pytext16.png", wx.BITMAP_TYPE_PNG)
+        self.pytext16 = self.imagelist.Add(image.ConvertToBitmap())
+
+        image = wx.Image("artwork/schem16.png", wx.BITMAP_TYPE_PNG)
+        self.schem16 = self.imagelist.Add(image.ConvertToBitmap())
+
+        image = wx.Image("artwork/chip16.png", wx.BITMAP_TYPE_PNG)
+        self.chip16 = self.imagelist.Add(image.ConvertToBitmap())
+
+        self.ntb_left.SetImageList(self.imagelist)
+        self.ntb_editor.SetImageList(self.imagelist)
+        self.ntb_bottom.SetImageList(self.imagelist)
+
+        icon = wx.Icon("subcircuit.ico")
+        self.SetIcon(icon)
+
+        self.SetTitle("SubCircuit")
+
+        # application icon:
+
         icon = wx.Icon(ICONFILE, wx.BITMAP_TYPE_ICO)
         self.SetIcon(icon)
 
+        # schematic setup:
+
+        self.schematics = {}
+        schematics = self.schematics
+        self.schcnt = 1
+        self.active_schem = None
+        active_schematic = self.active_schem
+        self.active_script = None
+
         # additional bindings (others are in gui.py):
+
         self.Bind(aui.EVT_AUINOTEBOOK_PAGE_CLOSED, self.on_page_close,
                   self.ntb_editor)
 
@@ -1417,13 +1570,16 @@ class MainFrame(gui.MainFrame):
                   self.ntb_editor)
 
         # add all loaded devices to the window:
+
         self.menu_blocks = wx.Menu()
 
         self.add_event_devices = {}
 
+        self.blocks, self.engines = load.import_devices("devices")
+
         blocks_by_family = {}
 
-        for key, block in blocks.items():
+        for key, block in self.blocks.items():
             if not block.family in blocks_by_family:
                 blocks_by_family[block.family] = {}
             blocks_by_family[block.family][key] = block
@@ -1441,36 +1597,56 @@ class MainFrame(gui.MainFrame):
 
         self.menu.Append(self.menu_blocks, "Blocks")
 
-        # add interactive window:
+        # interactive window:
+
         self.debugger = Debugger()
         self.szr_shell = wx.BoxSizer(wx.VERTICAL)
+        self.pnl_shell = wx.Panel(self.ntb_bottom)
         self.pnl_shell.SetSizer(self.szr_shell)
         self.interactive = Interactive(self.pnl_shell, 0, self.debugger)
         self.szr_shell.Fit(self.pnl_shell)
-        self.szr_shell.Add(self.interactive, 1, wx.EXPAND | wx.ALL, 5)
+        self.szr_shell.Add(self.interactive, 1, wx.EXPAND)
 
+        self.ntb_bottom.SetImageList(self.imagelist)
+        self.ntb_bottom.AddPage(self.pnl_shell, " Interactive", True,
+                                self.pylogo16)
+
+        pystyle = self.interactive.GetStyleAt(0)
+
+        self.interactive.SelectAll()
+        start, end = self.interactive.GetSelection()
+        text = self.interactive.GetSelectedText()
+        lines = text.split("\n")[:3]
         self.interactive.push("from subcircuit.netlist import Netlist",
                               silent=False)
 
-        #self.interactive.push("print('{0}')".format(text))
-        sys.stdout = self.interactive
-        sys.stderr = self.interactive
+        stc.StyledTextCtrl.ClearAll(self.interactive)
+        pyver = sys.version
+        self.interactive.AddText("\nPython {0}\n".format(pyver.replace("\n",
+                                                                       " ")))
 
-        # load engine classes into namespace so they're accessible to scripts
-        # and subcircuit definitions. The following call loads all of the
-        # found device engines into this module's namespace, and has the same
-        # affect as if the following type of import statement was made for
-        # all device engines in the device package:
-        #
-        # from subcircuit.devices.r import subcircuit.devices.r.R as R
-        # from subcircuit.devices.C import subcircuit.devices.c.C as C
-        # etc ... (you get the idea)
-        #
-        # so they can be used and added to netlist like this:
-        #
-        # netlist.device("R1", R([1, 0], value=1.0))
+        self.interactive.StartStyling(self.interactive.GetLastPosition(), 0)
+        self.interactive.push("\n")  # force imput prompt
+
+        if redirect:
+            sys.stdout = self.interactive
+            sys.stderr = self.interactive
 
         load.load_engines_to_module(sys.modules[__name__])
+
+        # device tree:
+
+        self.szr_tree = wx.BoxSizer(wx.VERTICAL)
+        self.pnl_tree = wx.Panel(self.ntb_left)
+        self.pnl_tree.SetSizer(self.szr_tree)
+
+        self.device_tree = DeviceTree(self.pnl_tree, self.blocks)
+
+        self.szr_tree.Fit(self.pnl_tree)
+        self.szr_tree.Add(self.device_tree, 1, wx.EXPAND | wx.ALL)
+
+        self.ntb_left.SetImageList(self.imagelist)
+        self.ntb_left.AddPage(self.pnl_tree, " Devices", True, self.chip16)
 
         self.statusbar.SetStatusText("Ready")
 
@@ -1493,14 +1669,16 @@ class MainFrame(gui.MainFrame):
         self.schcnt += 1
         sch = sb.Schematic(name)
         schem = SchematicWindow(subcircuit.ntb_editor, sch)
-        self.ntb_editor.AddPage(schem, name, select=True)
+
+        self.ntb_editor.AddPage(schem, name, True, self.schem16)
+
         self.schematics[name] = schem
         self.active_schem = schem
         active_schematic = self.active_schem
         schem.path = None
 
-        self.szr_shell.Fit(self.pnl_shell)
-        
+        wx.SafeYield()
+
         return schem
 
     def add_device(self, type_):
@@ -1522,9 +1700,10 @@ class MainFrame(gui.MainFrame):
                     device.plot_curves = []
                 pickle.dump(schem, f)
                 wx.MessageBox("File saved to: [{0}]".format(path))
-                pth, fil = os.path.split(path)
-                self.ntb_editor.SetPageText(self.ntb_editor.GetSelection(), fil)
-                self.active_schem.name = fil
+                pth, file_ = os.path.split(path)
+                self.ntb_editor.SetPageText(self.ntb_editor.GetSelection(),
+                                            file_)
+                self.active_schem.name = file_
 
         except Exception as e:
             wx.MessageBox("File save failed. {0}".format(e.message))
@@ -1540,7 +1719,8 @@ class MainFrame(gui.MainFrame):
         self.schematics[name] = schem
         self.active_schem = schem
         active_schematic = self.active_schem
-        self.ntb_editor.AddPage(schem, name, select=True)
+
+        self.ntb_editor.AddPage(schem, name, True, self.schem16)
 
     def run(self):
         if self.active_schem:
@@ -1571,6 +1751,52 @@ class MainFrame(gui.MainFrame):
             self.netlist.plot(*chans)
 
             self.active_schem.Refresh()
+
+    def gen_netlist(self, schem):
+
+        name = schem.name.split(".")[0]
+
+        header = "\n"
+
+        header += "# Auto-generated netlist from schematic: {0}\n\n"
+        header += "from subcircuit.netlist import Netlist, import_devices\n"
+        header += "from subcircuit.stimuli import Sin, Pulse, Pwl, Exp\n"
+        header += "from subcircuit.interfaces import Voltage, Current\n\n"
+        header += "import_devices()\n\n"
+        header += "# Netlist Definition:\n"
+
+        code = header.format(schem.name)
+
+        code += schem.get_netlist_code(name)
+
+        code += "\n\n# Simulation:\n"
+
+        settings = self.active_schem.sim_settings.values()
+        (dt, tmax, maxitr, tol, voltages, currents) = settings
+
+        code += "{0}.trans({1}, {2})\n\n".format(name, dt, tmax)
+
+        voltplots = ""
+        for volt in voltages.split(" "):
+            voltplots += "Voltage({0}),".format(volt)
+
+        currplots = ""
+        for curr in currents.split(" "):
+            currplots += 'Current("{0}"),'.format(curr)
+
+        if voltages or currents:
+            code += "{0}.plot({1}, {2})".format(name, voltplots.strip(","),
+                                                currplots.strip(","))
+
+        # add interactive window:
+        script = PyEdit(self.ntb_editor)
+        script.AddText(code)
+
+        self.ntb_editor.AddPage(script, name + ".py", True, self.pytext16)
+
+        self.active_script = script
+
+
 
     def add_gadget(self, type_):
         if self.active_schem:
@@ -1650,11 +1876,32 @@ class MainFrame(gui.MainFrame):
     def on_run(self, event):
         self.run()
 
+    def on_run_script(self, event):
+        if self.active_script:
+            print("Runnning active script...".format())
+            code = self.active_script.GetText()
+            for line in code.split("\n"):
+                if line:
+                    self.interactive.push(line)
+            print("Complete.")
+
     def on_page_close(self, event):
         index = event.GetSelection()
 
     def on_schem_context(self, event):
         pass
+
+    def on_gen_netlist(self, event):
+        self.gen_netlist(self.active_schem)
+
+
+class SubCircuitApp(wx.App):
+    def __init__(self):
+        wx.App.__init__(self)
+        #self.Bind(wx.EVT_ACTIVATE, self.on_activate)
+
+    def on_activate(self, event):
+        self.GetTopWindow().Raise()
 
 
 # endregion
@@ -1662,20 +1909,23 @@ class MainFrame(gui.MainFrame):
 
 if __name__ == '__main__':
 
+    is_windows = wx.Platform == "__WXMSW__"
+
     blocks, engines = load.import_devices("devices")
 
-    app = wx.App()
-    subcircuit = MainFrame()
-    subcircuit.SetSize((800, 600))
+    app = SubCircuitApp()
+
+    subcircuit = MainFrame(redirect=True)
+    subcircuit.SetSize((1000, 600))
     subcircuit.SetPosition((100, 100))
     subcircuit.new_schem()
 
     # debug code:
-    #frame.open_schematic("/Users/josephmhood/Documents/bjt1.sch")
-    #frame.open_schematic("C:/Users/josephmhood/Desktop/Cir1.sch")
-    #frame.run()
+    #subcircuit.open_schematic("/Users/josephmhood/Documents/cir1.sch")
+    #subcircuit.open_schematic("C:/Users/josephmhood/Desktop/Cir1.sch")
+    #subcircuit.run()
 
-    if wx.Platform == "__WXMSW__":  # if we're running on windows:
+    if is_windows:
         import ctypes
         myappid = 'josephmhood.subcircuit.v01'
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)

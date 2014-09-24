@@ -83,6 +83,7 @@ class V(inter.MNADevice, inter.CurrentSensor):
 
         self.res = res
         self.induct = induct
+        self.value = value
 
     def connect(self):
         nplus, nminus = self.nodes
@@ -125,12 +126,31 @@ class V(inter.MNADevice, inter.CurrentSensor):
 
 class VBlock(sb.Block):
     """Schematic graphical inteface for V device."""
+
+    # meta data:
+
     friendly_name = "Voltage Source (DC)"
     family = "Sources"
     label = "V"
     engine = V
 
-    def __init__(self, name):
+    symbol = sb.Symbol()
+
+    # leads:
+    symbol.lines.append(((60, 0), (60, 20)))
+    symbol.lines.append(((60, 80), (60, 100)))
+
+    # plus:
+    symbol.lines.append(((60, 28), (60, 38)))
+    symbol.lines.append(((55, 33), (65, 33)))
+
+    # minus:
+    symbol.lines.append(((55, 67), (65, 67)))
+
+    # circle
+    symbol.circles.append((60, 50, 30))
+
+    def __init__(self, name=""):
         # init super:
         sb.Block.__init__(self, name, V)
 
@@ -141,17 +161,6 @@ class VBlock(sb.Block):
         # properties:
         self.properties['Voltage (V)'] = 1.0
 
-        # leads:
-        self.lines.append(((60, 0), (60, 25)))
-        self.lines.append(((60, 75), (60, 100)))
-
-        # plus:
-        self.lines.append(((60, 33), (60, 43)))
-        self.lines.append(((55, 38), (65, 38)))
-
-        # circle
-        self.circles.append((60, 50, 25))
-
     def get_engine(self, nodes):
         return V(nodes, self.properties['Voltage (V)'])
 
@@ -161,6 +170,25 @@ class VSinBlock(sb.Block):
     family = "Sources"
     label = "VSIN"
     engine = V
+
+    symbol = sb.Symbol()
+
+    # leads:
+    symbol.lines.append(((60, 0), (60, 20)))
+    symbol.lines.append(((60, 80), (60, 100)))
+
+    # plus:
+    symbol.lines.append(((60, 28), (60, 38)))
+    symbol.lines.append(((55, 33), (65, 33)))
+
+    # circle
+    symbol.circles.append((60, 50, 30))
+
+    # sine:
+    a1 = math.pi
+    a2 = 0.0
+    symbol.arcs.append((53, 58, 7, a1, a2, True))
+    symbol.arcs.append((67, 58, 7, -a1, -a2, False))
 
     def __init__(self, name):
         # init super:
@@ -178,22 +206,6 @@ class VSinBlock(sb.Block):
         self.properties['Damping factor (1/s)'] = 0.0
         self.properties['Phase (rad)'] = 0.0
 
-        # leads:
-        self.lines.append(((60, 0), (60, 25)))
-        self.lines.append(((60, 75), (60, 100)))
-
-        # plus:
-        self.lines.append(((60, 33), (60, 43)))
-        self.lines.append(((55, 38), (65, 38)))
-
-        # circle
-        self.circles.append((60, 50, 25))
-
-        # sine:
-        a1 = math.pi * 1.0
-        a2 = math.pi * 0.0
-        self.arcs.append((53, 58, 7, a1, a2, True))
-        self.arcs.append((67, 58, 7, -a1, -a2, False))
 
     def get_engine(self, nodes):
         vo = self.properties['Voltage Offset (V)']
@@ -213,6 +225,23 @@ class VPulseBlock(sb.Block):
     label = "VPULSE"
     engine = V
 
+    symbol = sb.Symbol()
+
+    # leads:
+    symbol.lines.append(((60, 0), (60, 20)))
+    symbol.lines.append(((60, 80), (60, 100)))
+
+    # plus:
+    symbol.lines.append(((60, 28), (60, 38)))
+    symbol.lines.append(((55, 33), (65, 33)))
+
+    # circle
+    symbol.circles.append((60, 50, 30))
+
+    # pulse:
+    symbol.lines.append(((45, 60), (55, 60), (55, 50),
+                       (65, 50), (65, 60), (75, 60)))
+
     def __init__(self, name):
         # init super:
         sb.Block.__init__(self, name, V)
@@ -229,21 +258,6 @@ class VPulseBlock(sb.Block):
         self.properties['Fall Time (s)'] = 0.0
         self.properties['Width (s)'] = 0.01
         self.properties['Period (s)'] = 0.02
-
-        # leads:
-        self.lines.append(((60, 0), (60, 25)))
-        self.lines.append(((60, 75), (60, 100)))
-
-        # plus:
-        self.lines.append(((60, 33), (60, 43)))
-        self.lines.append(((55, 38), (65, 38)))
-
-        # circle
-        self.circles.append((60, 50, 25))
-
-        # pulse:
-        self.lines.append(((45, 60), (55, 60), (55, 50),
-                           (65, 50), (65, 60), (75, 60)))
 
     def get_engine(self, nodes):
         v1 = self.properties['Voltage 1 (V)']

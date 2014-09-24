@@ -86,6 +86,19 @@ class LBlock(sb.Block):
     label = "L"
     engine = L
 
+    symbol = sb.Symbol()
+
+    # leads:
+    symbol.lines.append(((60, 0), (60, 20)))
+    symbol.lines.append(((60, 80), (60, 100)))
+
+    # coils (x, y, r, ang0, ang1, clockwise)
+    ang1 = math.pi * 0.5
+    ang2 = 3.0 * math.pi * 0.5
+    symbol.arcs.append((60, 30, 10, ang1, ang2, True))
+    symbol.arcs.append((60, 50, 10, ang1, ang2, True))
+    symbol.arcs.append((60, 70, 10, ang1, ang2, True))
+
     def __init__(self, name):
         # init super:
         sb.Block.__init__(self, name, L)
@@ -97,16 +110,7 @@ class LBlock(sb.Block):
         # properties:
         self.properties['Inductance (H)'] = 0.1
 
-        # leads:
-        self.lines.append(((60, 0), (60, 20)))
-        self.lines.append(((60, 80), (60, 100)))
 
-        # coils (x, y, r, ang0, ang1, clockwise)
-        ang1 = math.pi * 0.5
-        ang2 = 3.0 * math.pi * 0.5
-        self.arcs.append((60, 30, 10, ang1, ang2, True))
-        self.arcs.append((60, 50, 10, ang1, ang2, True))
-        self.arcs.append((60, 70, 10, ang1, ang2, True))
 
     def get_engine(self, nodes):
         return L(nodes, self.properties['Inductance (H)'])
@@ -120,6 +124,22 @@ class LLinkBlock(sb.Block):
     label = "L"
     engine = L
 
+    symbol = sb.Symbol()
+
+    # leads:
+    symbol.lines.append(((60, 0), (60, 20)))
+    symbol.lines.append(((60, 80), (60, 100)))
+
+    # coils (x, y, r, ang0, ang1, clockwise)
+    ang1 = math.pi * 0.5
+    ang2 = 3.0 * math.pi * 0.5
+    symbol.arcs.append((60, 30, 10, ang1, ang2, False))
+    symbol.arcs.append((60, 50, 10, ang1, ang2, False))
+    symbol.arcs.append((60, 70, 10, ang1, ang2, False))
+
+    # mag link bar:
+    symbol.lines.append(((80, 20), (80, 80)))
+
     def __init__(self, name):
         # init super:
         sb.Block.__init__(self, name, L)
@@ -131,20 +151,6 @@ class LLinkBlock(sb.Block):
 
         # properties:
         self.properties['Inductance (H)'] = 0.1
-
-        # leads:
-        self.lines.append(((60, 0), (60, 20)))
-        self.lines.append(((60, 80), (60, 100)))
-
-        # coils (x, y, r, ang0, ang1, clockwise)
-        ang1 = math.pi * 0.5
-        ang2 = 3.0 * math.pi * 0.5
-        self.arcs.append((60, 30, 10, ang1, ang2, False))
-        self.arcs.append((60, 50, 10, ang1, ang2, False))
-        self.arcs.append((60, 70, 10, ang1, ang2, False))
-
-        # mag link bar:
-        self.lines.append(((80, 20), (80, 80)))
 
     def get_engine(self, nodes):
         return L(nodes, self.properties['Inductance (H)'])

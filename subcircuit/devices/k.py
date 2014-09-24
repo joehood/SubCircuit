@@ -100,12 +100,18 @@ class Mut(inter.MNADevice):
         self.bequiv[1] = self.mutual / dt * current1
 
 
-class MBlock(sb.Block):
+class MutBlock(sb.Block):
     """Schematic graphical inteface for R device."""
     friendly_name = "Mutual Inductance (Linkable)"
     family = "Elementary"
     label = "MUT"
     engine = Mut
+
+    symbol = sb.Symbol()
+
+    symbol.lines.append(((60, 20), (60, 35)))
+    symbol.lines.append(((60, 65), (60, 80)))
+    symbol.rects.append((45, 35, 30, 30, 2))
 
     def __init__(self, name):
         # init super:
@@ -117,12 +123,6 @@ class MBlock(sb.Block):
 
         # properties:
         self.properties['Mutual Inductance'] = 0.01
-
-        # shape:
-        self.lines.append(((60, 20), (60, 35)))
-        self.lines.append(((60, 65), (60, 80)))
-
-        self.rects.append((45, 35, 30, 30, 2))
 
     def get_engine(self, nodes):
         return Mut(nodes, self.properties['Mutual Inductance'])

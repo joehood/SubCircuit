@@ -18,6 +18,8 @@ limitations under the License.
 import inspect
 import os
 
+import wx
+
 import sandbox as sb
 import interfaces as inter
 
@@ -45,7 +47,7 @@ def load_engines_to_module(module, dir="devices"):
 def import_devices(package="devices"):
     """Imports devices and block classes into a module's namespace.
     :param package: local package to search in
-    :return: None
+    :return: blocks, engines
     """
     engines = {}
     blocks = {}
@@ -69,3 +71,49 @@ def import_devices(package="devices"):
                 engines[clsname] = cls
 
     return blocks, engines
+
+
+def get_block_bitmap(type_, color=wx.Colour(0,0,0), width=5):
+
+    size = (120, 120)
+
+    try:
+        size = type_.size
+    except:
+        pass
+
+    bitmap = wx.EmptyBitmap(*size)
+    dc = wx.MemoryDC()
+    dc.SelectObject(bitmap)
+    type_.symbol.draw(dc, color=color, width=width)
+    dc.SelectObject(wx.NullBitmap)
+
+    return bitmap
+
+
+def get_block_images(blocks, color=wx.Colour(0,0,0), width=5):
+    """
+    :param package:
+    :return:
+    """
+
+    images = {}
+
+    for name, block_type in blocks.items():
+        try:
+            bitmap = get_block_bitmap(block_type, color=color, width=width)
+            image = bitmap.ConvertToImage()
+            images[name] = image
+        except Exception as e:
+            pass
+
+    return images
+
+
+if __name__ == "__main__":
+
+    engines, blocks = import_devices("devices")
+    images = get_block_images(blocks)
+    for name, image in images.items():
+        image.SaveFile('Users/josephmhood/Documents/test/{0}.png'.format(name),
+                       wx.BITMAP_TYPE_PNG)

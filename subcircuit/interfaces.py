@@ -48,6 +48,7 @@ class Device(object):
         self.name = None
         self.netlist = None
         self.parameters = parameters
+        self.value = None
 
     def connect(self):
         """Virtual class. Must be implemented by derived class.
@@ -153,6 +154,24 @@ class Device(object):
         """
         self.step(dt, t)
         pass
+
+    def get_code_string(self):
+        code_string = ""
+        type_ = type(self).__name__
+        nodes = str(self.nodes)
+        value = str(self.value)
+
+        plist = ""
+        for pname, param in self.parameters.items():
+            plist += ", {0}={1}".format(pname, param)
+
+        if self.value:
+            code_string = "{0}({1}, value={2}{3})".format(type_, nodes,
+                                                          value, plist)
+        else:
+            code_string = "{0}({1}{3})".format(type_, nodes, value, plist)
+
+        return code_string
 
     def __str__(self):
         s = "{0} {1}".format(self.name, self.nodes)

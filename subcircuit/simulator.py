@@ -16,7 +16,7 @@ limitations under the License.
 """
 
 from __future__ import print_function, division
-#import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 import numpy
 from interfaces import *
 
@@ -218,15 +218,15 @@ class Simulator():
 
         else:
             pass
-            # plt.figure()
-            # for curve in curves:
-            #     x, y, label = curve
-            #     plt.plot(x, y, label=label)
-            #     plt.title(self.netlist.title)
-            #     plt.legend()
-            #     plt.xlabel('t (s)')
-            # if curves:
-            #     plt.show()
+            plt.figure()
+            for curve in curves:
+                x, y, label = curve
+                plt.plot(x, y, label=label)
+                plt.title(self.netlist.title)
+                plt.legend()
+                plt.xlabel('t (s)')
+            if curves:
+                plt.show()
 
         return plot_panel
 

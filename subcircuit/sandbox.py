@@ -17,9 +17,9 @@ limitations under the License.
 
 import math
 from collections import OrderedDict as ODict
+import inspect
 
 import wx
-
 
 
 # region Constants
@@ -67,6 +67,66 @@ class Mode(object):
     MOVE = 5
     EDIT = 6
     ADD_BLOCK = 7
+
+
+class Symbol:
+    def __init__(self):
+        self.lines = []
+        self.circles = []
+        self.rects = []
+        self.arcs = []
+
+    def draw(self, dc, color=wx.Colour(0, 0, 0), width=5,
+             fill=wx.Colour(0, 0, 0, 0)):
+
+        dc.SetBrush(wx.Brush(fill))
+        dc.SetPen(wx.Pen(color, width))
+
+        for circle in self.circles:
+            if len(circle) == 3:
+                dc.DrawCircle(*circle)
+            elif len(circle) == 4:
+                dc.DrawEllipse(*circle)
+
+        for rect in self.rects:
+            dc.DrawRoundedRectangle(*rect)
+
+        for arc in self.arcs:
+            pts = []
+
+            x, y, r, ang1, ang2, cw = arc
+
+            x1 = x + r * math.cos(ang1)
+            y1 = y + r * math.sin(ang1)
+
+            x2 = x + r * math.cos(ang2)
+            y2 = y + r * math.sin(ang2)
+
+            #dc.DrawArc(x1, y1, x2, y2, x, y)
+
+            if ang2 == 0.0:
+                if cw:
+                    xc, yc = x1 + r, y1 - r
+                else:
+                    xc, yc = x1 + r, y1 + r
+            else:
+                if cw:
+                    xc, yc = x1 - r, y1 - r
+                else:
+                    xc, yc = x1 + r, y1 - r
+
+            pts.append(wx.Point(x1, y1))
+            pts.append(wx.Point(xc, yc))
+            pts.append(wx.Point(x2, y2))
+
+            dc.DrawSpline(pts)
+
+        for line in self.lines:
+            pt1 = line[0]
+            for pt2 in line[1:]:
+                (x1, y1), (x2, y2) = pt1, pt2
+                dc.DrawLine(x1, y1, x2, y2)
+                pt1 = pt2
 
 
 class SchematicObject(object):
@@ -191,18 +251,18 @@ class Segment(SchematicObject):
 
 
 class Connector(SchematicObject):
-    def __init__(self, connection):
+    def __init__(self, start_connection):
         SchematicObject.__init__(self)
-        self.start = connection.center
+        self.start = start_connection.center
         self.end = self.start
         self.partial = True
         self.knees = []
         self.ports = []
         self.end_connection_point = None
-        self.start_connection_point = connection
+        self.start_connection_point = start_connection
         self.segments = []
-        self.active_connection = connection
-        connection.add_connector(self)
+        self.active_connection = start_connection
+        start_connection.add_connector(self)
 
     def add_port(self, port):
         if not port in self.ports:
@@ -216,28 +276,28 @@ class Connector(SchematicObject):
             knee.add_connector(self)
             knee.connected = True
 
-    def get_connectoin_points(self):
+    def get_connection_points(self):
         return self.knees + self.ports
 
-    def add_segment(self, connection):
-        segment = Segment(self, self.active_connection, connection)
+    def add_segment(self, next_connection):
+        segment = Segment(self, self.active_connection, next_connection)
         self.segments.append(segment)
-        if isinstance(connection, KneePoint):
-            self.add_knee(connection)
-        elif isinstance(connection, Port):
-            self.add_port(connection)
-        connection.add_connector(self)
-        self.active_connection = connection
+        if isinstance(next_connection, KneePoint):
+            self.add_knee(next_connection)
+        elif isinstance(next_connection, Port):
+            self.add_port(next_connection)
+        next_connection.add_connector(self)
+        self.active_connection = next_connection
 
-    def split_segment(self, segment, connection):
+    def split_segment(self, segment, splitting_connection):
         if segment in self.segments:
             connection1 = segment.connection1
-            segment2 = Segment(self, connection1, connection)
-            segment.connection1 = connection
+            segment2 = Segment(self, connection1, splitting_connection)
+            segment.connection1 = splitting_connection
             i = self.segments.index(segment)
             self.segments.insert(i, segment2)
-            self.add_knee(connection)
-            connection.add_connector(self)
+            self.add_knee(splitting_connection)
+            splitting_connection.add_connector(self)
 
     def remove_knee(self, knee):
         for i, segment in enumerate(self.segments):
@@ -250,7 +310,7 @@ class Connector(SchematicObject):
     def get_last_point(self):
         if self.segments:
             (x1, y1), (x2, y2) = self.segments[-1]
-            return (x2, y2)
+            return x2, y2
         else:
             return self.start
 
@@ -285,6 +345,8 @@ class BlockLabel(SchematicObject):
 
 
 class Block(SchematicObject):
+    is_block = True
+
     def __init__(self, name, engine=None, is_ground=False,
                  is_signal_device=True):
         SchematicObject.__init__(self)
@@ -304,7 +366,14 @@ class Block(SchematicObject):
         self.arcs = []
         self.fields = ODict()
 
-        self.nominal_size = (100, 100)
+        self.nominal_size = (120, 120)
+
+        # dump symbol geometry from class attributes to instance:
+        block_type = inspect.getmro(self.__class__)[0]  # get the derived cls
+        self.lines = block_type.symbol.lines
+        self.circles = block_type.symbol.circles
+        self.rects = block_type.symbol.rects
+        self.arcs = block_type.symbol.arcs
 
         label = BlockLabel('name', name, (-20, 0))
         self.fields['name'] = label

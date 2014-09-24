@@ -81,6 +81,20 @@ class IBlock(sb.Block):
     label = "I"
     engine = I
 
+    symbol = sb.Symbol()
+
+    # leads:
+    symbol.lines.append(((60, 0), (60, 20)))
+    symbol.lines.append(((60, 80), (60, 100)))
+
+    # arrow:
+    symbol.lines.append(((60, 65), (60, 35)))
+    symbol.lines.append(((55, 45), (60, 35), (65, 45)))
+
+
+    # circle
+    symbol.circles.append((60, 50, 30))
+
     def __init__(self, name):
         # init super:
         sb.Block.__init__(self, name, I)
@@ -91,17 +105,6 @@ class IBlock(sb.Block):
 
         # properties:
         self.properties['Current (A)'] = 1.0
-
-        # leads:
-        self.lines.append(((60, 0), (60, 25)))
-        self.lines.append(((60, 75), (60, 100)))
-
-        # arrow:
-        self.lines.append(((60, 65), (60, 35)))
-        self.lines.append(((55, 45), (60, 35), (65, 45)))
-
-        # circle
-        self.circles.append((60, 50, 25))
 
     def get_engine(self, nodes):
         return I(nodes, self.properties['Current (A)'])

@@ -79,6 +79,12 @@ class RBlock(sb.Block):
     label = "R"
     engine = R
 
+    symbol = sb.Symbol()
+
+    # resistor shape:
+    symbol.lines.append(((60, 0), (60, 20), (45, 25), (75, 35), (45, 45),
+                           (75, 55), (45, 65), (75, 75), (60, 80), (60, 100)))
+
     def __init__(self, name):
         # init super:
         sb.Block.__init__(self, name)
@@ -90,9 +96,7 @@ class RBlock(sb.Block):
         # properties:
         self.properties['Resistance (R)'] = 1.0
 
-        # resistor shape:
-        self.lines.append(((60, 0), (60, 20), (45, 25), (75, 35), (45, 45),
-                           (75, 55), (45, 65), (75, 75), (60, 80), (60, 100)))
+
 
     def get_engine(self, nodes):
         return R(nodes, self.properties['Resistance (R)'])

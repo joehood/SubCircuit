@@ -17,12 +17,14 @@ limitations under the License.
 
 from __future__ import print_function
 from copy import deepcopy as clone
+import sys
 
 import numpy as np
 import numpy.linalg as la
 
 import subcircuit.interfaces as inter
 import subcircuit.simulator as sim
+import subcircuit.loader as loader
 
 
 class Netlist():
@@ -311,6 +313,9 @@ class Netlist():
 
     def simulation_hook(self, dt, t):
         pass
+
+    def load_devices(self):
+        loader.load_engines_to_module(sys.modules["__main__"])
 
 
 class SubCircuitError(Exception):

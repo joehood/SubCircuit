@@ -47,26 +47,27 @@ class CurrentSensorBlock(sb.Block):
     label = "I"
     engine = CurrentSensor
 
+    symbol = sb.Symbol()
+
+    # lines:
+    symbol.lines.append(((80, 40), (80, 70)))
+    symbol.lines.append(((60, 80), (100, 80)))
+
+    # plus:
+    symbol.lines.append(((60, 53), (60, 63)))
+    symbol.lines.append(((55, 58), (65, 58)))
+
+    # circle
+    symbol.circles.append((75, 70, 10, 20))
+
     def __init__(self, name):
         # init super:
         sb.Block.__init__(self, name, None)
 
         # port:
-        self.ports['positive'] = sb.Port(self, 0, (60, 160))
-        self.ports['negative'] = sb.Port(self, 1, (100, 160))
-        self.ports['current node'] = sb.Port(self, 2, (80, 120))
-
-        # lines:
-        self.lines.append(((80, 120), (80, 150)))
-        self.lines.append(((60, 160), (100, 160)))
-
-        # plus:
-        self.lines.append(((60, 133), (60, 143)))
-        self.lines.append(((55, 138), (65, 138)))
-
-        # circle
-        self.circles.append((75, 150, 10, 20))
-
+        self.ports['positive'] = sb.Port(self, 0, (60, 80))
+        self.ports['negative'] = sb.Port(self, 1, (100, 80))
+        self.ports['current node'] = sb.Port(self, 2, (80, 40))
 
     def get_engine(self, nodes):
         self.engine = CurrentSensor(nodes)

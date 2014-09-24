@@ -209,6 +209,19 @@ class SBlock(sb.Block):
     label = "S"
     engine = S
 
+    symbol = sb.Symbol()
+
+    # leads:
+    symbol.lines.append(((60, 0), (60, 35)))
+    symbol.lines.append(((60, 65), (60, 100)))
+
+    symbol.lines.append(((20, 40), (35, 40)))
+    symbol.lines.append(((20, 60), (35, 60)))
+
+    # box:
+    symbol.lines.append(((60, 65), (75, 38)))
+    symbol.rects.append((35, 20, 50, 60, 3))
+
     def __init__(self, name):
         # init super:
         sb.Block.__init__(self, name)
@@ -221,16 +234,7 @@ class SBlock(sb.Block):
 
         # properties:
 
-        # leads:
-        self.lines.append(((60, 0), (60, 35)))
-        self.lines.append(((60, 65), (60, 100)))
 
-        self.lines.append(((20, 40), (35, 40)))
-        self.lines.append(((20, 60), (35, 60)))
-
-        # box:
-        self.lines.append(((60, 65), (75, 38)))
-        self.rects.append((35, 20, 50, 60, 3))
 
 
     def get_engine(self, nodes):

@@ -24,12 +24,13 @@ import subcircuit.sandbox as sb
 class Q(inter.MNADevice):
     """Bipolar Junction Transistor (BJT)"""
 
-    def __init__(self, nodes, model=None, area=None, off=True, ic=None,
+    def __init__(self, nodes, model=None, pnp=False, area=None, off=True, ic=None,
                  temp=None, **parameters):
 
         """Creates a new Q (BJT) device.
         :param nodes: sequence of node connections: (NC, NB, NE [,NC])
         :param model: optional Q model
+        :param pnp: True if PNP, otherwise NPN
         :param area: surface area
         :param off: intially in off condition
         :param IC: intial voltage condition
@@ -108,6 +109,7 @@ class Q(inter.MNADevice):
         inter.MNADevice.__init__(self, nodes, 0, **parameters)
 
         self.model = model
+        self.pnp = pnp
         self.area = area
         self.off = off
         self.ic = ic
@@ -185,6 +187,8 @@ class Q(inter.MNADevice):
         vbc = self.get_across(self.pb, self.pc)
 
         # update the current estimates:
+        vbe = min(1.0, vbe)
+        vbc = min(1.0, vbc)
         ibf = (ifs / betaf) * (math.exp(vbe / vt) - 1)
         ibr = (irs / betar) * (math.exp(vbc / vt) - 1)
         ic = (is_ * (math.exp(vbe / vt) - math.exp(vbc / vt)) -
@@ -201,8 +205,9 @@ class Q(inter.MNADevice):
         ibreq = ibr - gpir * vbc
         iceq = ic - gmf * vbe + gmr * vbc - go * vbe
 
-        """
+        # load jacobian:
 
+        """
                     gpir
         B o----+----/\/\/---+----o C
                |            |
@@ -212,15 +217,6 @@ class Q(inter.MNADevice):
                |            |
         E o----+------------'
 
-                   ibreq
-                     ,-.
-        B o-----+---(-->)---+----------+----------+----o C
-                |    `-'    |          |          |
-               ,|.         /|\        / \        ,|.
-              ( v )ibreq  ( v )gmf*  ( ^ )gmr*  ( v ) iceq
-               `-'         \ / vbe    \|/ vbc    `-'
-                |           |          |          |
-        E o-----+-----------+----------+----------'
         """
 
         self.jac[self.pc, self.pc] = gpir + go
@@ -233,9 +229,47 @@ class Q(inter.MNADevice):
         self.jac[self.pe, self.pb] = -gpif
         self.jac[self.pe, self.pe] = gpif + gpir
 
-        self.bequiv[self.pc] = iceq + gmf * vbe - gmr * vbc - ibreq
-        self.bequiv[self.pb] = ibfeq + ibreq
-        self.bequiv[self.pe] = gmr * vbc -ibreq - gmf * vbe - iceq
+        if not self.pnp:
+
+            """
+                        ibreq
+                         ,-.
+            B o-----+---(-->)---+----------+----------+----o C
+                    |    `-'    |          |          |
+                   ,|.         /|\        / \        ,|.
+                  ( v )ibreq  ( v )gmf*  ( ^ )gmr*  ( v ) iceq
+                   `-'         \ / vbe    \|/ vbc    `-'
+                    |           |          |          |
+            E o-----+-----------+----------+----------'
+
+            """
+
+            self.bequiv[self.pc] = iceq + gmf * vbe - gmr * vbc - ibreq
+            self.bequiv[self.pb] = ibfeq + ibreq
+            self.bequiv[self.pe] = gmr * vbc - ibreq - gmf * vbe - iceq
+
+        else:
+
+            """
+                        ibreq
+                         ,-.
+                    .---(<--)---.
+                    |    `-'    |
+                    |           |
+                    |           |
+            B o-----+-----------+----------+----------+----o C
+                    |           |          |          |
+                   ,-.         / \        /|\        ,-.
+                  ( ^ )ibreq  ( ^ )gmf*  ( v )gmr*  ( ^ ) iceq
+                   `|'         \|/ vbe    \ / vbc    `|'
+                    |           |          |          |
+            E o-----+-----------+----------+----------'
+
+            """
+
+            self.bequiv[self.pc] = -iceq - gmf * vbe + gmr * vbc + ibreq
+            self.bequiv[self.pb] = -ibfeq - ibreq
+            self.bequiv[self.pe] = -gmr * vbc + ibreq + gmf * vbe + iceq
 
 
 class QNPNBlock(sb.Block):
@@ -244,19 +278,18 @@ class QNPNBlock(sb.Block):
     label = "Q"
     engine = Q
 
+    symbol = sb.Symbol()
+
+    symbol.lines.append(((80, 0), (40, 25)))
+    symbol.lines.append(((0, 40), (40, 40)))
+    symbol.lines.append(((80, 80), (40, 55)))
+    symbol.lines.append(((40, 10), (40, 70)))
+
+    symbol.lines.append(((63, 80), (80, 80), (73, 65)))
+
     def __init__(self, name):
         sb.Block.__init__(self, name, Q)
 
-        """
-                   o C
-                   |
-               |---'
-        B o----|     NPN
-               |-->.
-                   |
-                   o E
-
-        """
 
         # ports NPN:
         self.ports['collector'] = sb.Port(self, 0, (80, 0))
@@ -265,13 +298,35 @@ class QNPNBlock(sb.Block):
 
         # properties:
 
-        # symbol:
-        self.lines.append(((80, 0), (40, 25)))
-        self.lines.append(((0, 40), (40, 40)))
-        self.lines.append(((80, 80), (40, 55)))
-        self.lines.append(((40, 10), (40, 70)))
-
-        self.lines.append(((63, 80), (80, 80), (73, 65)))
-
     def get_engine(self, nodes):
         return Q(nodes)
+
+
+class QPNPBlock(sb.Block):
+    friendly_name = "BJT (PNP)"
+    family = "Semiconductors"
+    label = "Q"
+    engine = Q
+
+    symbol = sb.Symbol()
+
+    symbol.lines.append(((80, 0), (40, 25)))
+    symbol.lines.append(((0, 40), (40, 40)))
+    symbol.lines.append(((80, 80), (40, 55)))
+    symbol.lines.append(((40, 10), (40, 70)))
+
+    symbol.lines.append(((57, 25), (40, 25), (49, 9)))
+
+    def __init__(self, name):
+        sb.Block.__init__(self, name, Q)
+
+
+        # ports NPN:
+        self.ports['emitter'] = sb.Port(self, 0, (80, 0))
+        self.ports['base'] = sb.Port(self, 1, (0, 40))
+        self.ports['collector'] = sb.Port(self, 2, (80, 80))
+
+        # properties:
+
+    def get_engine(self, nodes):
+        return Q(nodes, pnp=True)

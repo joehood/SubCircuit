@@ -26,20 +26,24 @@ class GndBlock(sb.Block):
     label = "G"
     engine = None
 
+    symbol = sb.Symbol()
+
+    # lead:
+    symbol.lines.append(((60, 40), (60, 55)))
+
+    # ground lines:
+    symbol.lines.append(((45, 55), (75, 55)))
+    symbol.lines.append(((52, 64), (68, 64)))
+    symbol.lines.append(((58, 73), (62, 73)))
+
     def __init__(self, name):
         # init super:
         sb.Block.__init__(self, name, None, is_ground=True)
 
         # port:
-        self.ports['ground'] = sb.Port(self, 0, (60, 0), is_ground=True)
+        self.ports['ground'] = sb.Port(self, 0, (60, 40), is_ground=True)
 
-        # lead:
-        self.lines.append(((60, 0), (60, 15)))
 
-        # ground lines:
-        self.lines.append(((45, 15), (75, 15)))
-        self.lines.append(((52, 24), (68, 24)))
-        self.lines.append(((58, 33), (62, 33)))
 
     def get_engine(self, nodes):
         raise Exception("GND Block has no engine.")

@@ -75,6 +75,14 @@ class Scope5Block(sb.Block):
     color4 = wx.Colour(255, 200, 0)
     color5 = wx.Colour(220, 220, 220)
 
+    size = (162, 122)
+
+    symbol = sb.Symbol()
+
+    # rects:
+    symbol.rects.append((0, 0, 160, 120, 5))
+    symbol.rects.append((12, 12, 136, 96, 1))
+
     def __init__(self, name):
         # init super:
         sb.Block.__init__(self, name, None, is_signal_device=True)

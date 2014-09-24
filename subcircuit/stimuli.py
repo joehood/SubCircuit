@@ -86,6 +86,16 @@ class Pulse(inter.Stimulus):
         else:
             return self.v1
 
+    def __str__(self):
+        s = "Pulse({0}, {1}, {2}, {3}, {4}, {5}, {6})".format(self.v1, self.v2,
+                                                         self.td, self.tr,
+                                                         self.tf, self.pw,
+                                                         self.per)
+        return s
+
+    def __repr__(self):
+        return str(self)
+
 
 class Sin(inter.Stimulus):
     """Models a sin wave stimulus for independent sources."""
@@ -137,6 +147,15 @@ class Sin(inter.Stimulus):
             return self.vo + self.va * math.sin(
                 2.0 * math.pi * self.freq * (t + self.td) + self.phi)
 
+    def __str__(self):
+        s = "Sin({0}, {1}, {2}, {3}, {4}, {5})".format(self.vo, self.va,
+                                                       self.freq, self.td,
+                                                       self.theta, self.phi)
+        return s
+
+    def __repr__(self):
+        return str(self)
+
 
 class Exp(inter.Stimulus):
     """Generates a SPICE EXP stimulus for independant sources."""
@@ -182,6 +201,15 @@ class Exp(inter.Stimulus):
                     + (self.v1 - self.v2) * (
                     1.0 - math.exp(-(t - self.td2) / self.tau2)))
 
+    def __str__(self):
+        s = "Exp({0}, {1}, {2}, {3}, {4}, {5})".format(self.v1, self.v2,
+                                                       self.td1, self.tau1,
+                                                       self.td2, self.tau2)
+        return s
+
+    def __repr__(self):
+        return str(self)
+
 
 class Pwl(inter.Stimulus):
     """TODO Doc"""
@@ -215,6 +243,17 @@ class Pwl(inter.Stimulus):
             x0, y0 = self.xp[itr - 1], self.yp[itr - 1]
             x1, y1 = self.xp[itr], self.yp[itr]
             return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
+
+    def __str__(self):
+        p = ""
+        for x, y in zip(self.xp, self.yp):
+            p += "({0}, {1}),".format(x, y)
+        s = "Pwl({0})".format(p.strip(","))
+        return s
+
+    def __repr__(self):
+        return str(self)
+
 
 
 class Sffm(inter.Stimulus):

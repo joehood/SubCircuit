@@ -57,9 +57,29 @@ class IScopeBlock(sb.Block):
     label = "Scope"
     engine = IScope
 
+    size = (162, 170)
+
+    symbol = sb.Symbol()
+
+    # lines:
+    symbol.lines.append(((80, 120), (80, 150)))
+    symbol.lines.append(((60, 160), (100, 160)))
+
+    # plus:
+    symbol.lines.append(((60, 133), (60, 143)))
+    symbol.lines.append(((55, 138), (65, 138)))
+
+    # circle
+    symbol.circles.append((75, 150, 10, 20))
+
+    # rects:
+    symbol.rects.append((0, 0, 160, 120, 5))
+    symbol.rects.append((12, 12, 136, 96, 1))
+
     def __init__(self, name):
         # init super:
         sb.Block.__init__(self, name, None)
+
         self.size = (160, 120)
         self.margin = 12
 
@@ -67,22 +87,10 @@ class IScopeBlock(sb.Block):
         self.ports['positive'] = sb.Port(self, 0, (60, 160))
         self.ports['negative'] = sb.Port(self, 1, (100, 160))
 
-        # lines:
-        self.lines.append(((80, 120), (80, 150)))
-        self.lines.append(((60, 160), (100, 160)))
-
-        # plus:
-        self.lines.append(((60, 133), (60, 143)))
-        self.lines.append(((55, 138), (65, 138)))
-
-        # circle
-        self.circles.append((75, 150, 10, 20))
-
-        # rects:
+        # hd rects:
         (w, h), m = self.size, self.margin
-        self.rects.append(((0, 0, w, h, 5), (sb.DEVICE_COLOR, sb.SCOPE_BG)))
-        window = m, m, w - m * 2, h - m * 2, 1
-        self.rects.append((window, (sb.SCOPE_FG, sb.SCOPE_FG)))
+        self.rects.append(((0, 0, 160, 120, 5), (sb.DEVICE_COLOR, sb.SCOPE_BG)))
+        self.rects.append(((12, 12, 136, 96, 1), (sb.SCOPE_FG, sb.SCOPE_FG)))
 
     def end(self):
         times = self.engine.time

@@ -113,6 +113,15 @@ class DBlock(sb.Block):
     label = "D"
     engine = D
 
+    symbol = sb.Symbol()
+    # leads:
+    symbol.lines.append(((60, 0), (60, 37)))
+    symbol.lines.append(((60, 63), (60, 100)))
+
+    # diode symbol:
+    symbol.lines.append(((60, 37), (42, 63), (78, 63), (60, 37)))
+    symbol.lines.append(((42, 37), (78, 37)))
+
     def __init__(self, name):
         sb.Block.__init__(self, name, D)
 
@@ -123,14 +132,6 @@ class DBlock(sb.Block):
         # properties:
         self.properties['Isat (I)'] = 1.0E-9
         self.properties['Vt (V)'] = 25.85e-3
-
-        # leads:
-        self.lines.append(((60, 0), (60, 37)))
-        self.lines.append(((60, 63), (60, 100)))
-
-        # diode symbol:
-        self.lines.append(((60, 37), (42, 63), (78, 63), (60, 37)))
-        self.lines.append(((42, 37), (78, 37)))
 
     def get_engine(self, nodes):
         return D(nodes)

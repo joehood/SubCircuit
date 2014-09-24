@@ -92,6 +92,14 @@ class VScopeBlock(sb.Block):
     label = "Scope"
     engine = VScope
 
+    size = (162, 122)
+
+    symbol = sb.Symbol()
+
+    # rects:
+    symbol.rects.append((0, 0, 160, 120, 5))
+    symbol.rects.append((12, 12, 136, 96, 1))
+
     def __init__(self, name):
         # init super:
         sb.Block.__init__(self, name, None, is_signal_device=True)
@@ -160,6 +168,14 @@ class VScope3Block(sb.Block):
     family = "Meters"
     label = "Scope"
     engine = VScope3
+
+    size = (162, 122)
+
+    symbol = sb.Symbol()
+
+    # rects:
+    symbol.rects.append((0, 0, 160, 120, 5))
+    symbol.rects.append((12, 12, 136, 96, 1))
 
     def __init__(self, name):
         # init super:

@@ -97,6 +97,12 @@ class CBlock(sb.Block):
     label = "C"
     engine = C
 
+    symbol = sb.Symbol()
+    symbol.lines.append(((60, 0), (60, 40)))
+    symbol.lines.append(((60, 60), (60, 100)))
+    symbol.lines.append(((40, 40), (80, 40)))
+    symbol.lines.append(((40, 60), (80, 60)))
+
     def __init__(self, name):
         # init super:
         sb.Block.__init__(self, name, C)
@@ -107,14 +113,6 @@ class CBlock(sb.Block):
 
         # properties:
         self.properties['Capacitance (F)'] = 0.1
-
-        # leads:
-        self.lines.append(((60, 0), (60, 40)))
-        self.lines.append(((60, 60), (60, 100)))
-
-        # plates:
-        self.lines.append(((40, 40), (80, 40)))
-        self.lines.append(((40, 60), (80, 60)))
 
     def get_engine(self, nodes):
         return C(nodes, self.properties['Capacitance (F)'])

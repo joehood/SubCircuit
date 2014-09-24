@@ -113,6 +113,23 @@ class EBlock(sb.Block):
     label = "E"
     engine = E
 
+    symbol = sb.Symbol()
+    # main leads:
+    symbol.lines.append(((60, 0), (60, 20)))
+    symbol.lines.append(((60, 80), (60, 100)))
+
+    # control leads:
+    symbol.lines.append(((20, 40), (40, 40)))
+    symbol.lines.append(((20, 60), (40, 60)))
+
+    # plus:
+    symbol.lines.append(((60, 33), (60, 43)))
+    symbol.lines.append(((55, 38), (65, 38)))
+
+    # diamond:
+    symbol.lines.append(((60, 20), (90, 50), (60, 80), (30, 50),
+                       (60, 20)))
+
     def __init__(self, name):
         # init super:
         sb.Block.__init__(self, name)
@@ -125,21 +142,6 @@ class EBlock(sb.Block):
 
         # properties:
         self.properties['Gain value or (time, value) pairs'] = 1.0
-
-        # leads:
-        self.lines.append(((60, 0), (60, 25)))
-        self.lines.append(((60, 75), (60, 100)))
-
-        self.lines.append(((20, 40), (45, 40)))
-        self.lines.append(((20, 60), (45, 60)))
-
-        # plus:
-        self.lines.append(((60, 33), (60, 43)))
-        self.lines.append(((55, 38), (65, 38)))
-
-        # diamond:
-        self.lines.append(((60, 25), (85, 50), (60, 75), (35, 50),
-                           (60, 25)))
 
 
     def get_engine(self, nodes):
