@@ -33,6 +33,6 @@ setup(windows=[{
               "optimize": 1,
               "dll_excludes": ["MSVCP90.dll"]
           }
-      }
+      }, requires=["numpy"]
 )
 

@@ -15,46 +15,52 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from __future__ import print_function, division
 import math
 from collections import OrderedDict as ODict
 import inspect
+from copy import deepcopy as clone
 
 import wx
-
 
 # region Constants
 
 # default settings:
-BG_COLOR = wx.Colour(0, 0, 0)
-GRID_COLOR = wx.Colour(30, 30, 30)
-DEVICE_COLOR = wx.Colour(130, 130, 130)
-SELECT_COLOR = wx.Colour(255, 255, 255)
-HOVER_COLOR = wx.Colour(255, 255, 255)
-GHOST_COLOR = wx.Colour(220, 220, 220)
-SCOPE_BG = wx.Colour(50, 50, 50)
-SCOPE_FG = wx.Colour(40, 80, 40)
+BG_COLOR = wx.Colour(255, 255, 255)
+GRID_COLOR = wx.Colour(230, 230, 230)
+DEVICE_COLOR = wx.Colour(0, 0, 0)
+SELECT_COLOR = wx.Colour(0, 0, 0)
+HOVER_COLOR = wx.Colour(0, 0, 0)
+GHOST_COLOR = wx.Colour(150, 150, 150)
+SCOPE_BG = wx.Colour(200, 200, 200)
+SCOPE_FG = wx.Colour(255, 255, 255)
 SCOPE_CURVE = wx.Colour(100, 200, 100)
-LINE_WIDTH = 2
-SELECT_WIDTH = 3
-HOVER_WIDTH = 2
-GRID_SIZE = 20
+LINE_WIDTH = 1
+SELECT_WIDTH = 4
+HOVER_WIDTH = 3
+GRID_MAJOR = 40
+GRID_MINOR = 10
 GRID_WIDTH = 1
-SHOW_CROSSHAIR = False
-MOVE_DELTA = GRID_SIZE
-DEF_DEVICE = "Resistor"
+SHOW_MOUSE_POSITION = False
+MOVE_DELTA = GRID_MINOR
 FONT_SIZE = 14
 ORTHO_CONNECTORS = False
 CONNECTOR_HIT_MARGIN = 10
-PORT_HIT_MARGIN = 10
+PORT_HIT_MARGIN = 5
 PORT_RADIUS = 3
+HANDLE_HIT_MARGIN = 10
+HANDLE_SIZE = 8
 SNAP_TO_GRID = True
-DEF_SIM_SETTINGS = ODict()
-DEF_SIM_SETTINGS["dt"] = 0.001
-DEF_SIM_SETTINGS["tmax"] = 0.1
-DEF_SIM_SETTINGS["maxitr"] = 200
-DEF_SIM_SETTINGS["tol"] = 0.00001
-DEF_SIM_SETTINGS["voltages"] = ""
-DEF_SIM_SETTINGS["currents"] = ""
+MIN_SCALE_FACTOR = 0.5
+MAX_SCALE_FACTOR = 100.0
+
+PI = math.pi
+TWO_PI = math.pi * 2
+PI_OVER_TWO = math.pi * 0.5
+PI_OVER_THREE = math.pi / 3
+PI_OVER_FOUR = math.pi / 4
+TWO_PI_OVER_THREE = math.pi * 2 / 3
+THREE_PI_OVER_TWO = math.pi * 1.5
 
 # endregion
 
@@ -63,18 +69,58 @@ class Mode(object):
     DISARMED = 0
     STANDBY = 1
     CONNECT = 3
-    SELECTION = 4
-    MOVE = 5
-    EDIT = 6
-    ADD_BLOCK = 7
+    HANDLE = 4
+    SELECTION = 5
+    MOVE = 6
+    EDIT = 7
+    ADD_BLOCK = 8
 
 
-class Symbol:
+class PortDirection(object):
+    IN = 0
+    OUT = 1
+    INOUT = 2
+
+
+class Alignment(object):
+    """Alignment constants.
+    Numbers are the positions on a number pad (with bidirectional lookup):
+
+    NW:1       N:2   NE:3
+     W:4  CENTER:5    E:6
+    SW:7       S:8   SE:9
+    """
+    CENTER = 5
+    N = 2
+    NE = 3
+    E = 6
+    SE = 9
+    S = 8
+    SW = 7
+    W = 4
+    NW = 1
+    items = {5: "CENTER", 2: "N", 3: "NE",
+             6: "E", 9: "SE", 8: "S",
+             7: "SW", 4: "W", 1: "NW",
+             "CENTER": 5, "N": 2, "NE": 3,
+             "E": 6, "SE": 9, "S": 8,
+             "SW": 7, "W": 4, "NW": 1}
+
+    @classmethod
+    def __getitem__(cls, item):
+        return cls.items[item]
+
+
+class Symbol(object):
     def __init__(self):
         self.lines = []
         self.circles = []
         self.rects = []
+        self.rrects = []
         self.arcs = []
+        self.labels = []
+        self.fields = []
+        self.ratios = []
 
     def draw(self, dc, color=wx.Colour(0, 0, 0), width=5,
              fill=wx.Colour(0, 0, 0, 0)):
@@ -89,7 +135,10 @@ class Symbol:
                 dc.DrawEllipse(*circle)
 
         for rect in self.rects:
-            dc.DrawRoundedRectangle(*rect)
+            dc.DrawRectangle(*rect)
+
+        for rrect in self.rrects:
+            dc.DrawRectangle(rrect.x, rrect.y, rrect.w, rrect.h)
 
         for arc in self.arcs:
             pts = []
@@ -127,6 +176,26 @@ class Symbol:
                 (x1, y1), (x2, y2) = pt1, pt2
                 dc.DrawLine(x1, y1, x2, y2)
                 pt1 = pt2
+
+    def add_field(self, text="", position=(0, 0), size=5, align=Alignment.E,
+                  block_rect=None, block_align=None):
+        field = Field(text, position, size, align, block_rect, block_align)
+        self.fields.append(field)
+        return field
+
+    def add_ratio(self, numerator="", denominator="", position=(0, 0), size=5,
+                  align=Alignment.E, block_rect=None, block_align=None):
+
+        ratio = EquationField(numerator, denominator, position, size, align,
+                      block_rect, block_align)
+
+        self.ratios.append(ratio)
+        return ratio
+
+    def add_rrect(self, x, y, w, h, corners_only=False):
+        rrect = ResizableRect(x, y, w, h, corners_only)
+        self.rrects.append(rrect)
+        return rrect
 
 
 class SchematicObject(object):
@@ -177,6 +246,152 @@ class SchematicObject(object):
         return hit
 
 
+class Field(SchematicObject):
+    def __init__(self, text="", position=(0, 0), size=5, align=Alignment.E,
+                 rect_anchor=False, rect_align=None):
+
+        SchematicObject.__init__(self)
+        self.text = text
+        self.position = position
+        self.size = size
+        self.align = align
+        self.rect_anchor = rect_anchor
+        self.rect_align = rect_align
+
+
+class EquationField(SchematicObject):
+    def __init__(self, equation="", position=(0, 0), size=5,
+                 align=Alignment.E, rect_anchor=False, rect_align=None):
+
+        SchematicObject.__init__(self)
+        self.equation = equation
+        self.position = position
+        self.size = size
+        self.align = align
+        self.rect_anchor = rect_anchor
+        self.rect_align = rect_align
+
+
+class Handle(SchematicObject):
+    def __init__(self, rect, position, alignment):
+        SchematicObject.__init__(self)
+        self.alignment = alignment
+        self.position = position
+        self.rect = rect
+
+    def __getitem__(self, item):
+        return self.position[item]
+
+    def translate(self, delta):
+        delta = self.rect.move_handle(self, delta)
+
+
+class ResizableRect(SchematicObject):
+
+    def __init__(self, x, y, w, h, corners_only=False, transparent=False):
+
+        SchematicObject.__init__(self)
+        self.x0, self.y0, self.w0, self.h0 = x, y, w, h
+        self.x, self.y, self.w, self.h = x, y, w, h
+        self.handles = None
+        self.corners_only = corners_only
+        self.setup_handles()
+        self.block = None
+        self.transparent = transparent
+
+    def move_handle(self, handle, delta):
+
+        if handle.rect == self:
+
+            dx, dy = delta
+            xp, yp = self.x, self.y
+            update = True
+
+            x0, y0, w0, h0 = self.x, self.y, self.w, self.h
+
+            if handle.alignment == Alignment.NW:
+
+                self.x = xp + dx
+                self.y = yp + dy
+                self.w -= dx
+                self.h -= dy
+
+            elif handle.alignment == Alignment.SW:
+
+                self.x = xp + dx
+                self.w -= dx
+                self.h += dy
+
+            elif handle.alignment == Alignment.NE:
+
+                self.y = yp + dy
+                self.w += dx
+                self.h -= dy
+
+            elif handle.alignment == Alignment.SE:
+
+                self.w += dx
+                self.h += dy
+
+            elif handle.alignment == Alignment.N:
+
+                self.y = yp + dy
+                self.h -= dy
+
+            elif handle.alignment == Alignment.S:
+
+                self.h += dy
+
+            elif handle.alignment == Alignment.W:
+
+                self.x = xp + dx
+                self.w -= dx
+
+            elif handle.alignment == Alignment.E:
+
+                self.w += dx
+
+            else:
+
+                update = False
+
+            if update:
+
+                self.setup_handles()
+
+            return self.x, self.y, self.w, self.h
+
+    def __getitem__(self, item):
+        if item == 0:
+            return self.x
+        elif item == 1:
+            return self.y
+        elif item == 2:
+            return self.w
+        elif item == 3:
+            return self.h
+
+    def setup_handles(self):
+
+        x, y, w, h = self.x, self.y, self.w, self.h
+
+        corners = dict(NW=Handle(self, (x, y), Alignment.NW),
+                       SW=Handle(self, (x, y + h), Alignment.SW),
+                       NE=Handle(self, (x + w, y), Alignment.NE),
+                       SE=Handle(self, (x + w, y + h), Alignment.SE))
+
+        edges = dict(N=Handle(self, (x + w / 2, y), Alignment.N),
+                     S=Handle(self, (x + w / 2, y + h), Alignment.S),
+                     W=Handle(self, (x, y + h / 2), Alignment.W),
+                     E=Handle(self, (x + w, y + h / 2), Alignment.E))
+
+        if self.corners_only:
+            self.handles = corners
+
+        else:
+            self.handles = dict(corners.items() + edges.items())
+
+
 class ConnectionPoint(SchematicObject):
     def __init__(self, connector):
         SchematicObject.__init__(self)
@@ -198,16 +413,33 @@ class ConnectionPoint(SchematicObject):
 
 
 class Port(ConnectionPoint):
-    def __init__(self, block, index, position, is_ground=False):
+    def __init__(self, block, index, position, direction=PortDirection.INOUT,
+                 block_edge=Alignment.W, is_ground=False, anchored_rect=None,
+                 anchored_align=None):
         ConnectionPoint.__init__(self, None)
+        self.block_edge = block_edge
         self.index = index
         self.node = None
         self.position = position
         self.block = block
         self.is_ground = is_ground
+        self.direction = direction
+        self.initial_value = 0.0
+        self.value = self.initial_value
+        self.connected_ports = []
+        self.anchored_rect = anchored_rect
+        self.anchored_align = anchored_align
 
     def translate(self, delta):
         pass
+
+    def add_connected_port(self, port):
+        if not port in self.connected_ports:
+            self.connected_ports.append(port)
+
+    def remove_connected_port(self, port):
+        if port in self.connected_ports:
+            self.connected_ports.remove(port)
 
     def __str__(self):
         return "{0}_{1}".format(self.block, self.index)
@@ -237,6 +469,11 @@ class Segment(SchematicObject):
         connections = self.connection1, self.connection2
         return connections[key]
 
+    def get_angle(self):
+        (x1, y1), (x2, y2) = self
+        dx, dy = x2 - x1, y2 - y1
+        return math.atan2(dy, dx)
+
     def hittest(self, point):
         pt1, pt2 = self
         if pt1 and pt2:
@@ -263,6 +500,8 @@ class Connector(SchematicObject):
         self.segments = []
         self.active_connection = start_connection
         start_connection.add_connector(self)
+        self.is_directional = True
+        self.arrow = None
 
     def add_port(self, port):
         if not port in self.ports:
@@ -311,6 +550,8 @@ class Connector(SchematicObject):
         if self.segments:
             (x1, y1), (x2, y2) = self.segments[-1]
             return x2, y2
+        elif self.partial:
+            return self.end
         else:
             return self.start
 
@@ -322,6 +563,39 @@ class Connector(SchematicObject):
         self.end = x2 + dx, y2 + dy
         for knee in self.knees:
             knee.translate(delta)
+        # if self.arrow:
+        #     (x1, y1), (x2, y2), (x3, y3) = self.arrow
+        #     self.arrow = ((x1 + dx, y1 + dy),
+        #                   (x2 + dx, y2 + dy),
+        #                   (x3 + dx, y3 + dy))
+
+    def update_arrow(self, pt, size=10, angle=PI_OVER_FOUR):
+        line = None
+        ang = None
+        x, y = pt
+
+        if self.partial and not self.segments:
+            (x1, y1), (x2, y2) = self.start, self.end
+            dx, dy = x2 - x1, y2 - y1
+            ang = math.atan2(dy, dx)
+
+        elif self.partial and self.segments:
+            (xd, yd), (x1, y1) = self.segments[-1]
+            (x2, y2) = self.end
+            dx, dy = x2 - x1, y2 - y1
+            ang = math.atan2(dy, dx)
+
+        elif self.segments:
+            ang = self.segments[-1].get_angle()
+
+        if ang is not None:
+            ang0 = ang + PI - angle
+            ang1 = ang + PI + angle
+            x0, y0 = x + size * math.cos(ang0), y + size * math.sin(ang0)
+            x1, y1 = x + size * math.cos(ang1), y + size * math.sin(ang1)
+            line = (x0, y0), (x, y), (x1, y1)
+
+        self.arrow = line
 
     def __str__(self):
         s = "("
@@ -364,25 +638,50 @@ class Block(SchematicObject):
         self.rects = []
         self.circles = []
         self.arcs = []
-        self.fields = ODict()
+        self.labels = ODict()
 
         self.nominal_size = (120, 120)
 
         # dump symbol geometry from class attributes to instance:
+
         block_type = inspect.getmro(self.__class__)[0]  # get the derived cls
         self.lines = block_type.symbol.lines
         self.circles = block_type.symbol.circles
         self.rects = block_type.symbol.rects
+        self.rrects = block_type.symbol.rrects
+
+        for rrect in self.rrects:
+            rrect.block = self
+
         self.arcs = block_type.symbol.arcs
+        self.fields = block_type.symbol.fields
+        self.ratios = block_type.symbol.ratios
 
         label = BlockLabel('name', name, (-20, 0))
-        self.fields['name'] = label
+        self.labels['name'] = label
+
+    def design_update(self):
+        pass
 
     def get_engine(self, nodes):
         raise NotImplementedError()
 
     def end(self):
         pass
+
+    def add_field(self, text="", position=(0, 0), size=5, align=Alignment.E,
+                  block_rect=None, block_align=None):
+        field = Field(text, position, size, align, block_rect, block_align)
+        self.fields.append(field)
+        return field
+
+    def add_equation(self, equation="", position=(0, 0), size=5,
+                  align=Alignment.E, block_rect=None, block_align=None):
+
+        ratio = EquationField(equation, position, size, align,
+                      block_rect, block_align)
+        self.ratios.append(ratio)
+        return ratio
 
     def __str__(self):
         return self.name
@@ -396,7 +695,26 @@ class Schematic(object):
         self.name = name
         self.blocks = {}
         self.connectors = []
-        self.sim_settings = DEF_SIM_SETTINGS
+        self.sim_settings = None
+        self.parameters = []
+
+    def clone(self):
+        other = Schematic(self.name)
+
+        other.blocks = {}
+
+        for name, block in self.blocks.items():
+            if hasattr(block, "bmp"):
+                bmptemp = block.bmp
+                block.bmp = None
+                other.blocks[name] = clone(block)
+                self.blocks[name].bmp = bmptemp
+
+        other.connectors = clone(self.connectors)
+        other.sim_settings = clone(self.sim_settings)
+        other.parameters = clone(self.parameters)
+
+        return other
 
 
 def distance(line, point):

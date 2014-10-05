@@ -20,8 +20,9 @@ import pickle
 import os
 import sys
 import math
-from copy import deepcopy as clone
 import bdb
+from copy import deepcopy as clone
+from collections import OrderedDict as ODict
 
 import wx
 import wx.aui as aui
@@ -36,12 +37,24 @@ import subcircuit.interfaces as inter
 import subcircuit.sandbox as sb
 import subcircuit.gui as gui
 import subcircuit.loader as load
+import subcircuit.model.param as param
+from subcircuit.mathutils.pprint import equ2bmp
 
 
 # region CONSTANTS
 
 ICONFILE = "subcircuit.ico"
 DEF_SCHEM_NAME = "cir{0}"
+
+DEF_SIM_SETTINGS = ODict()
+DEF_SIM_SETTINGS["dt"] = 0.001
+DEF_SIM_SETTINGS["tmax"] = 0.1
+DEF_SIM_SETTINGS["maxitr"] = 200
+DEF_SIM_SETTINGS["tol"] = 0.00001
+DEF_SIM_SETTINGS["voltages"] = ""
+DEF_SIM_SETTINGS["currents"] = ""
+
+DEF_DEVICE = "Resistor"
 
 # endregion
 
@@ -230,11 +243,18 @@ class BlockDropTarget(wx.TextDropTarget):
         self.schematic_window.Refresh()
 
     def strip_non_ascii(self, s):
-        ascii = [c for c in s if (32 <= ord(c) < 127)]
+
+        legal_chars = ([32, 40, 41, 45, 46, 58, 91, 93, 95] +
+                       list(range(48, 58)) +
+                       list(range(65, 91)) +
+                       list(range(97, 123)))
+
+        ascii = [c for c in s if ord(c) in legal_chars]
         return ''.join(ascii)
 
 
 class SchematicWindow(wx.Panel):
+
     def __init__(self, parent, schematic=None, name=""):
 
         self.parent = parent
@@ -245,6 +265,7 @@ class SchematicWindow(wx.Panel):
             self.schematic = schematic
         else:
             self.schematic = sb.Schematic("Cir1")
+            self.schematic.sim_settings = DEF_SIM_SETTINGS
 
         if name:
             self.schematic.name = name
@@ -274,18 +295,23 @@ class SchematicWindow(wx.Panel):
         self.Bind(wx.EVT_LEFT_DCLICK, self.on_dclick)
         self.Bind(wx.EVT_SIZE, self.on_size)
 
-        # mouse movement management:
-        self.drug = False
-        self.x0 = 0.0
-        self.y0 = 0.0
-        self.x = 0.0
-        self.y = 0.0
-        self.dx = 0.0
-        self.dy = 0.0
-        self.x0_object = 0.0
-        self.y0_object = 0.0
+        # schemetic affine matrix state:
         self.scale = 1.0
-        self.scale_factor = 0.01
+        self.rotation = 0.0
+        self.translation = (0.0, 0.0)
+
+        # during schematic/object drag. Note that this is reset after the
+        # drag operation is complete.
+        self.drag_translation = (0.0, 0.0)
+        self.last_position = (0.0, 0.0)
+        self.current_position = (0.0, 0.0)
+        self.last_mouse_position = (0.0, 0.0)
+
+        # for some reason mac needs higher mouse scroll (zoom) sensitivity
+        if is_windows:
+            self.scroll_sensitivity = 0.001
+        else:
+            self.scroll_sensitivity = 0.01
 
         self.pen = wx.Pen(sb.DEVICE_COLOR, sb.LINE_WIDTH)
         self.pen_hover = wx.Pen(sb.HOVER_COLOR, sb.HOVER_WIDTH)
@@ -302,16 +328,19 @@ class SchematicWindow(wx.Panel):
         # drawing:
         if is_windows:
             self.SetDoubleBuffered(True)
-        self.gc = None
-        self.dc = None
+        else:
+            # note: don't double buffer for MAC, happens automatically
+            # If you do, it will be triple-buffered and slower
+            pass
 
         # state:
         self.netlist = None
         self.selected_objects = []
+        self.active_handle = None
         self.hit_objects = []
         self.hit_blocks = []
         self.hit_ports = []
-        self.hit_fields = []
+        self.hit_labels = []
         self.hit_knees = []
         self.hit_connectors = []
         self.hit_connection_points = []
@@ -331,24 +360,28 @@ class SchematicWindow(wx.Panel):
 
         self.netlist = None
 
+        #if defined(__WXGTK__)
+
+        self.SetCursor(wx.CROSS_CURSOR)
+
     def on_size(self, event):
         pass
 
     def on_dclick(self, event):
-        self.update_position(event)
-        self.update_hit_objects((self.x, self.y))
+        x, y = self.logical_position(event.x, event.y)
+        self.update_hit_objects((x, y))
 
-        if self.hit_fields:
-            field = self.hit_fields[0]
-            old = field.properties['text']
+        if self.hit_labels:
+            label = self.hit_labels[0]
+            old = label.properties['text']
 
             properties = PropertyGetter.update_properties(self,
                                                           'Label',
-                                                          field.properties)
+                                                          label.properties)
             new = properties['text']
             if not old == new:
                 if new in self.blocks:
-                    field.properties['text'] = old
+                    label.properties['text'] = old
                 else:
                     self.blocks[new] = self.blocks.pop(old)
                     self.blocks[new].name = new
@@ -357,6 +390,7 @@ class SchematicWindow(wx.Panel):
             block = self.hit_blocks[0]
             label = "Properties for {0}".format(str(block))
             PropertyGetter.update_properties(self, label, block.properties)
+            block.design_update()
 
     def select_object(self, obj):
         obj.selected = True
@@ -417,19 +451,15 @@ class SchematicWindow(wx.Panel):
 
     def on_left_up(self, event):
 
-        # reset translation points:
-        try:
-            self.x0, self.y0 = event.GetLogicalPosition(self.dc)
-        except:
-            pass
-
-        self.x0_object, self.y0_object = self.x0, self.y0
-
         # get updated position:
-        self.update_position(event)
-        pt = self.x, self.y
+        pt = self.logical_position(event.x, event.y)
+        spt = pt
+        if sb.SNAP_TO_GRID:
+            spt = self.snap(pt)
 
-        # get context:
+        self.update_hit_objects(pt)
+
+        # get key-down context:
         ctrl = event.ControlDown()
         shft = event.ShiftDown()
 
@@ -454,6 +484,13 @@ class SchematicWindow(wx.Panel):
             else:
                 self.deselect_all()
 
+        elif self.mode == sb.Mode.HANDLE:
+
+            if self.active_handle:
+                self.active_handle = None
+
+            self.mode = sb.Mode.STANDBY
+
         elif self.mode == sb.Mode.ADD_BLOCK:
 
             self.ghost.is_ghost = False
@@ -462,17 +499,15 @@ class SchematicWindow(wx.Panel):
             self.x0_object = 0.0
             self.y0_object = 0.0
 
+        self.SetCursor(wx.StockCursor(wx.CURSOR_CROSS))
+        self.last_mouse_position = (event.x, event.y)
+        self.last_position = spt
         self.Refresh()
 
     def on_left_down(self, event):
 
-        # reset translation points:
-        self.x0, self.y0 = event.GetLogicalPosition(self.dc)
-        self.x0_object, self.y0_object = self.x0, self.y0
-
         # get updated position:
-        self.update_position(event)
-        pt = self.x, self.y
+        pt = self.logical_position(event.x, event.y)
         spt = self.snap(pt)
 
         # get context:
@@ -496,7 +531,7 @@ class SchematicWindow(wx.Panel):
                         self.deselect_all()
                     self.select_object(self.top_obj)
 
-                if isinstance(self.top_obj, sb.KneePoint):
+                elif isinstance(self.top_obj, sb.KneePoint):
                     if self.top_obj.selected:
                         self.start_connector(self.top_obj)
                         self.mode = sb.Mode.CONNECT
@@ -504,6 +539,15 @@ class SchematicWindow(wx.Panel):
                         if not multi_select:
                             self.deselect_all()
                         self.select_object(self.top_obj)
+
+                elif isinstance(self.top_obj, sb.Handle):
+                    if not multi_select:
+                        self.deselect_all()
+                        self.select_object(self.top_obj)
+                        self.active_handle = self.top_obj
+                        self.drag_translation = (0, 0)
+                        self.last_position = pt
+                        self.mode = sb.Mode.HANDLE
 
                 elif isinstance(self.top_obj, sb.ConnectionPoint):
                     self.start_connector(self.top_obj)
@@ -533,18 +577,22 @@ class SchematicWindow(wx.Panel):
                 knee = sb.KneePoint(self.active_connector, spt)
                 self.active_connector.add_segment(knee)
 
+        self.SetCursor(wx.StockCursor(wx.CURSOR_CLOSED_HAND))
+        self.last_mouse_position = (event.x, event.y)
+        self.last_position = spt
         self.clean_up()
         self.Refresh()
 
+    def end_floating_connector(self, pt):
+
+        connection = sb.KneePoint(self.active_connector, pt)
+        self.end_connector(connection)
+        self.set_hover(connection)
+
     def on_right_down(self, event):
 
-        # reset translation points:
-        self.x0, self.y0 = event.GetLogicalPosition(self.dc)
-        self.x0_object, self.y0_object = self.x0, self.y0
-
         # get updated position:
-        self.update_position(event)
-        pt = self.x, self.y
+        pt = self.logical_position(event.x, event.y)
         spt = self.snap(pt)
 
         # get context:
@@ -578,10 +626,13 @@ class SchematicWindow(wx.Panel):
                 self.mode = sb.Mode.STANDBY
 
             else:
+                self.end_floating_connector(spt)
+                self.mode = sb.Mode.STANDBY
                 self.deselect_all()
 
+        self.last_mouse_position = (event.x, event.y)
+        self.last_position = spt
         self.clean_up()
-
         self.Refresh()
 
     def on_motion(self, event):
@@ -593,8 +644,7 @@ class SchematicWindow(wx.Panel):
         """
 
         # get position:
-        self.update_position(event)
-        pt = self.x, self.y
+        pt = self.logical_position(event.x, event.y)
         spt = pt
         if sb.SNAP_TO_GRID:
             spt = self.snap(pt)
@@ -624,15 +674,22 @@ class SchematicWindow(wx.Panel):
             self.active_connector.end = (x, y)
 
             if self.top_obj:
-                if not isinstance(self.top_obj, sb.Port) and self.hit_segments:
+
+                if (not isinstance(self.top_obj, sb.Port) and
+                        self.hit_segments):
+
                     seg = self.hit_segments[0]
                     connector = seg.connector
+
                     if not connector is self.active_connector:
                         hpt = seg.closest_hit_point
+
                         if hpt:
                             hpt = self.snap(hpt)
+
                             if seg.ghost_knee:
                                 seg.ghost_knee.position = hpt
+
                             else:
                                 knee = sb.KneePoint(seg.connector, hpt)
                                 seg.ghost_knee = knee
@@ -642,7 +699,17 @@ class SchematicWindow(wx.Panel):
                 self.ghost_knee_segment.ghost_knee = None
                 self.ghost_knee_segment = None
 
-        if self.mode == sb.Mode.ADD_BLOCK:
+        elif self.mode == sb.Mode.HANDLE:
+
+            if self.active_handle and dragging:
+                x0, y0 = self.last_position
+                xm, ym = spt
+                dx = xm - x0
+                dy = ym - y0
+                rect = self.active_handle.rect
+                rect.move_handle(self.active_handle, (dx, dy))
+
+        elif self.mode == sb.Mode.ADD_BLOCK:
 
             self.ghost.position = (x - 60, y - 60)
 
@@ -651,28 +718,29 @@ class SchematicWindow(wx.Panel):
             if dragging and leftdown:
 
                 if self.selected_objects:
-                    self.translate_selection((event.x, event.y))
+                    self.drag_selection((event.x, event.y))
                 else:
-                     self.translate_schematic((event.x, event.y))
+                     self.drag_schemetic((event.x, event.y))
 
             elif self.top_obj:
                 self.set_hover(self.top_obj)
 
+        self.last_mouse_position = (event.x, event.y)
+        self.last_position = spt
         self.Refresh()
 
-    def translate_schematic(self, offset):
-        x, y = offset
-        self.dx += (x - self.x0)
-        self.dy += (y - self.y0)
-        self.x0 = x
-        self.y0 = y
+    def drag_schemetic(self, new_point):
+        x, y = new_point
+        x0, y0 = self.last_mouse_position
+        dx, dy = (x - x0), (y - y0)
+        xtrans, ytrans = self.translation
+        self.translation = (xtrans + dx, ytrans + dy)
 
-    def translate_selection(self, new_pt):
-        x, y = new_pt
-        dx = (x - self.x0_object) / self.scale
-        dy = (y - self.y0_object) / self.scale
-        self.x0_object = x
-        self.y0_object = y
+    def drag_selection(self, new_point):
+        x, y = new_point
+        x0, y0 = self.last_mouse_position
+        dx = (x - x0) / self.scale
+        dy = (y - y0) / self.scale
         for obj in self.selected_objects:
             obj.translate((dx, dy))
             if isinstance(obj, sb.Connector):
@@ -685,13 +753,31 @@ class SchematicWindow(wx.Panel):
             obj.translate(delta)
         #self.auto_connect()
 
+    def zoom(self, delta, center):
+
+        scale0 = self.scale
+
+        xc0, yc0 = self.logical_position(*center)
+
+        self.scale += delta
+
+        self.scale = max(sb.MIN_SCALE_FACTOR, self.scale)
+        self.scale = min(sb.MAX_SCALE_FACTOR, self.scale)
+
+        if not scale0 == self.scale:
+
+            xc1, yc1 = self.logical_position(*center)
+
+            xtrans, ytrans = self.translation
+            xtrans += (xc1 - xc0) * self.scale
+            ytrans += (yc1 - yc0) * self.scale
+            self.translation = (xtrans, ytrans)
+
+            self.Refresh()
+
     def on_scroll(self, event):
-        self.update_position(event)
-        rot = event.GetWheelRotation()
-        self.scale += rot * self.scale_factor * 0.1
-        self.scale = max(0.5, self.scale)
-        self.update_position(event)
-        self.Refresh()
+        delta = event.GetWheelRotation() * self.scroll_sensitivity
+        self.zoom(delta, (event.x, event.y))
 
     def on_key_up(self, event):
 
@@ -787,8 +873,9 @@ class SchematicWindow(wx.Panel):
         self.top_obj = None
 
         hit_blocks = {}
+        hit_handles = {}
         hit_ports = {}
-        hit_fields = {}
+        hit_labels = {}
         hit_segments = {}
         hit_knees = {}
 
@@ -799,9 +886,13 @@ class SchematicWindow(wx.Panel):
             for port in block.ports.values():
                 if port.hittest(pt):
                     hit_ports[port.zorder] = port
-            for field in block.fields.values():
-                if field.hittest(pt):
-                    hit_fields[field.zorder] = field
+            for label in block.labels.values():
+                if label.hittest(pt):
+                    hit_labels[label.zorder] = label
+            for rrect in block.rrects:
+                for handle in rrect.handles.values():
+                    if handle.hittest(pt):
+                        hit_handles[handle.zorder] = handle
         for connector in self.connectors:
             for segment in connector.segments:
                 if segment.hittest(pt):
@@ -816,11 +907,14 @@ class SchematicWindow(wx.Panel):
         self.hit_ports = [obj for (z, obj) in
                           reversed(sorted(hit_ports.items()))]
 
+        self.hit_handles = [obj for (z, obj) in
+                            reversed(sorted(hit_handles.items()))]
+
         self.hit_blocks = [obj for (z, obj) in
                            reversed(sorted(hit_blocks.items()))]
 
-        self.hit_fields = [obj for (z, obj) in
-                           reversed(sorted(hit_fields.items()))]
+        self.hit_labels = [obj for (z, obj) in
+                           reversed(sorted(hit_labels.items()))]
 
         self.hit_segments = [obj for (z, obj) in
                              reversed(sorted(hit_segments.items()))]
@@ -830,8 +924,9 @@ class SchematicWindow(wx.Panel):
 
         # the order these lists are added is key:
 
-        self.hit_objects = (self.hit_fields +
+        self.hit_objects = (self.hit_labels +
                             self.hit_ports +
+                            self.hit_handles +
                             self.hit_blocks +
                             self.hit_knees +
                             self.hit_segments)
@@ -841,11 +936,12 @@ class SchematicWindow(wx.Panel):
         if self.hit_objects:
             self.top_obj = self.hit_objects[0]
 
-    def update_position(self, event):
-        self.x = event.GetX()
-        self.y = event.GetY()
-        self.x = (self.x - self.dx) / self.scale
-        self.y = (self.y - self.dy) / self.scale
+    def logical_position(self, xmouse, ymouse):
+        dx, dy = self.translation
+        xschem = (xmouse - dx) / self.scale
+        yschem = (ymouse - dy) / self.scale
+        logical_position = (xschem, yschem)
+        return logical_position
 
     def add_block(self, key, block, position):
         self.blocks[key] = block
@@ -904,24 +1000,6 @@ class SchematicWindow(wx.Panel):
         self.ghost.translate((x0 - 60, y0 - 60))
         self.SetFocus()
 
-    def draw_grid(self, gc):
-        spacing = sb.GRID_SIZE
-        extension = 1000.0
-        w, h = gc.GetSize()
-        w += extension
-        h += extension
-        ver = int(w / spacing)
-        hor = int(h / spacing)
-        pen = wx.Pen(sb.GRID_COLOR, sb.GRID_WIDTH)
-        pen.Cap = wx.CAP_BUTT
-        gc.SetPen(pen)
-        for i in range(ver):
-            offset = i * spacing - extension / 2
-            gc.StrokeLine(offset, 0 - extension / 2, offset, h)
-        for i in range(hor):
-            offset = i * spacing - extension / 2
-            gc.StrokeLine(0 - extension / 2, offset, w, offset)
-
     @staticmethod
     def get_bounding(path):
         rect = path.GetBox()
@@ -935,14 +1013,14 @@ class SchematicWindow(wx.Panel):
     def snap(position):
         if position:
             x, y = position
-            dx = x % sb.GRID_SIZE
-            dy = y % sb.GRID_SIZE
-            if dx > sb.GRID_SIZE / 2:
-                x += sb.GRID_SIZE - dx
+            dx = x % sb.GRID_MINOR
+            dy = y % sb.GRID_MINOR
+            if dx > sb.GRID_MINOR / 2:
+                x += sb.GRID_MINOR - dx
             else:
                 x -= dx
-            if dy > sb.GRID_SIZE / 2:
-                y += sb.GRID_SIZE - dy
+            if dy > sb.GRID_MINOR / 2:
+                y += sb.GRID_MINOR - dy
             else:
                 y -= dy
             return x, y
@@ -953,7 +1031,7 @@ class SchematicWindow(wx.Panel):
         pass
 
     def auto_connect(self):
-        tol = sb.GRID_SIZE / 2
+        tol = sb.GRID_MINOR / 2
 
         # auto connect port to port:
 
@@ -1017,11 +1095,134 @@ class SchematicWindow(wx.Panel):
         connection1.add_connector(connector)
         connection2.add_connector(connector)
 
+    def draw(self, dc):
+
+        # get logical position:
+        x, y = self.last_position
+
+        # create a graphics context from the drawing context this will help
+        # us automatically manage scaling, translation and rotation:
+        gc = wx.GraphicsContext.Create(self.dc)
+
+        # translate gc:
+        gc.Translate(*self.translation)
+
+        # scale gc (always keep x and y scale synchronized):
+        gc.Scale(self.scale, self.scale)
+
+        # rotate gc:
+        gc.Rotate(self.rotation)
+
+        # render grid:
+        self.draw_grid(gc)
+
+        # shows position of the mouse as seen by the gc (for debugging):
+        if sb.SHOW_MOUSE_POSITION:
+            path = gc.CreatePath()
+            path.AddCircle(x, y, 5)
+            gc.SetBrush(wx.Brush(wx.Colour(100, 200, 100)))
+            gc.FillPath(path)
+
+        # render blocks:
+        for name, block in self.blocks.items():
+            self.draw_block(block, gc)
+
+        # render connectors"
+        for connector in self.connectors:
+            self.draw_connector(connector, gc)
+
+        # TODO: render primatives and drawings
+
+
+        # this routine will render the hit boxes, either for all hit objects
+        # or just the top hit object (for debugging)
+
+        ALL_OBJECTS = False
+        TOP_OBJECT = True
+
+        if ALL_OBJECTS:
+            icolor = 0
+            colors = [wx.Colour(200, 100, 100),
+                      wx.Colour(100, 200, 100),
+                      wx.Colour(100, 100, 200),
+                      wx.Colour(150, 50, 50),
+                      wx.Colour(50, 150, 50),
+                      wx.Colour(50, 50, 150)]
+
+            line_width = 2
+            for obj in self.hit_objects:
+                path = gc.CreatePath()
+                for rect in obj.bounding_rects:
+                    x, y, w, h = rect
+                    path.AddRoundedRectangle(x, y, w, h, 2)
+                gc.SetPen(wx.Pen(colors[icolor], line_width))
+                gc.StrokePath(path)
+                icolor += 1
+                icolor = min(icolor, len(colors)-1)
+
+        elif TOP_OBJECT:
+            if self.top_obj:
+                path = gc.CreatePath()
+                for rect in self.top_obj.bounding_rects:
+                    if not rect == (0, 0, 0, 0):
+                        x, y, w, h = rect
+                        path.AddRoundedRectangle(x, y, w, h, 2)
+                gc.SetPen(wx.Pen(wx.Colour(200, 100, 100), 2))
+                gc.StrokePath(path)
+
+    def draw_grid(self, gc):
+        spacing = sb.GRID_MINOR
+        w, h = gc.GetSize()
+        dx, dy = self.translation
+        pen = wx.Pen(sb.GRID_COLOR, sb.GRID_WIDTH)
+        gc.SetPen(pen)
+
+        x0, y0 = 0.0, 0.0
+
+        w, h = w * 2.0, h * 2.0
+
+        w -= w % spacing
+
+        h -= h % spacing
+
+        x, y = x0, y0
+
+        path = gc.CreatePath()
+
+        path.MoveToPoint(x0, y0 - h)
+        while x <= (w - x0):
+            path.AddLineToPoint(x, h - y0)
+            x += spacing
+            path.MoveToPoint(x, y0 - h)
+
+        x = x0
+        path.MoveToPoint(x0, y0 - h)
+        while x >= -(w - x0):
+            path.AddLineToPoint(x, h - y0)
+            x -= spacing
+            path.MoveToPoint(x, y0 - h)
+
+        path.MoveToPoint(x0 - w, y0)
+        while y <= (h - y0):
+            path.AddLineToPoint(w - x0, y)
+            y += spacing
+            path.MoveToPoint(x0 - w, y)
+
+        y = y0
+        path.MoveToPoint(x0 - w, y0)
+        while y >= -(h - y0):
+            path.AddLineToPoint(w - x0, y)
+            y -= spacing
+            path.MoveToPoint(x0 - w, y)
+
+        gc.StrokePath(path)
+
     def draw_block(self, block, gc):
 
-        font = wx.Font(sb.FONT_SIZE, wx.FONTFAMILY_DEFAULT,
-                       wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD, False,
-                       "Courier 10 Pitch")
+        xb, yb = block.position
+
+        font = wx.Font(sb.FONT_SIZE, wx.FONTFAMILY_ROMAN,
+                       wx.FONTSTYLE_ITALIC, wx.FONTWEIGHT_NORMAL)
 
         if block.is_ghost:
             gc.SetPen(self.pen_ghost)
@@ -1051,6 +1252,8 @@ class SchematicWindow(wx.Panel):
         if block.ver_flip:
             matrix.Scale(1.0, -1.0)
 
+        # main symbol path:
+
         path = gc.CreatePath()
 
         for line in block.lines:
@@ -1066,6 +1269,9 @@ class SchematicWindow(wx.Panel):
                 hd_rects.append(rect)
             else:
                 path.AddRoundedRectangle(*rect)
+
+        for rrect in block.rrects:
+            path.AddRectangle(rrect.x, rrect.y, rrect.w, rrect.h)
 
         for circle in block.circles:
             if len(circle) == 3:
@@ -1086,6 +1292,8 @@ class SchematicWindow(wx.Panel):
 
         block.bounding_rects[0], block.center = self.get_bounding(path)
 
+        # end main symbol path
+
         for rect, (stroke, fill) in hd_rects:
             path = gc.CreatePath()
             path.AddRoundedRectangle(*rect)
@@ -1097,32 +1305,29 @@ class SchematicWindow(wx.Panel):
                 gc.SetPen(wx.Pen(stroke, 1))
                 gc.StrokePath(path)
 
-        if block.plot_curves:
+        for plot_curve in block.plot_curves:
+            curve, color = plot_curve
+            if not color:
+                color = sb.DEVICE_COLOR
+            pen = wx.Pen(color, 1)
+            path = gc.CreatePath()
+            gc.SetPen(pen)
+            path.MoveToPoint(curve[0])
+            for point in curve[1:]:
+                x2, y2 = point
+                path.AddLineToPoint(x2, y2)
+            path.Transform(matrix)
+            gc.StrokePath(path)
 
-            for plot_curve in block.plot_curves:
-                curve, color = plot_curve
-                if not color:
-                    color = sb.DEVICE_COLOR
-                pen = wx.Pen(color, 1)
-                path = gc.CreatePath()
-                gc.SetPen(pen)
-                path.MoveToPoint(curve[0])
-                for point in curve[1:]:
-                    x2, y2 = point
-                    path.AddLineToPoint(x2, y2)
-                path.Transform(matrix)
-                gc.StrokePath(path)
-
-
-        for key, field in block.fields.items():
+        for key, label in block.labels.items():
 
             if block.is_ghost:
                 gf = gc.CreateFont(font, sb.GHOST_COLOR)
 
-            elif field.selected or block.selected:
+            elif label.selected or block.selected:
                 gf = gc.CreateFont(font, sb.SELECT_COLOR)
 
-            elif field.hover or block.hover:
+            elif label.hover or block.hover:
                 gf = gc.CreateFont(font, sb.HOVER_COLOR)
 
             else:
@@ -1131,12 +1336,12 @@ class SchematicWindow(wx.Panel):
             gc.SetFont(gf)
 
             x, y, w, h = block.bounding_rects[0]
-            xo, yo = field.position
+            xo, yo = label.position
             xt, yt = x + xo, y + yo
-            gc.DrawText(field.get_text(), xt, yt)
-            w, h, d, e = gc.GetFullTextExtent(field.get_text())
-            field.bounding_rects[0] = (xt, yt, w, h)
-            field.center = (xt + w * 0.5, yt + h * 0.5)
+            gc.DrawText(label.get_text(), xt, yt)
+            w, h, d, e = gc.GetFullTextExtent(label.get_text())
+            label.bounding_rects[0] = (xt, yt, w, h)
+            label.center = (xt + w * 0.5, yt + h * 0.5)
 
         for name, port in block.ports.items():
 
@@ -1155,14 +1360,14 @@ class SchematicWindow(wx.Panel):
                 force_show = True
 
             elif port.selected:
-                gc.SetPen(self.pen)
-                gc.SetBrush(self.brush)
+                gc.SetPen(self.pen_select)
+                gc.SetBrush(self.brush_select)
                 gf = gc.CreateFont(font, sb.DEVICE_COLOR)
                 force_show = True
 
             elif port.hover:
-                gc.SetPen(self.pen_select)
-                gc.SetBrush(self.brush_select)
+                gc.SetPen(self.pen_hover)
+                gc.SetBrush(self.brush_hover)
                 gf = gc.CreateFont(font, sb.HOVER_COLOR)
                 force_show = True
 
@@ -1195,19 +1400,318 @@ class SchematicWindow(wx.Panel):
             gc.SetFont(gf)
 
             (x, y), r, m = port.position, port.radius, port.hit_margin
+
+            if port.anchored_rect:
+                rect = port.anchored_rect
+                xr0, yr0, wr0, hr0 = rect.x0, rect.y0, rect.w0, rect.h0
+                xr, yr, wr, hr = rect.x, rect.y, rect.w, rect.h
+
+                if port.anchored_align == sb.Alignment.W:
+                    y *= (hr / hr0)
+                    x += (xr - xr0)
+
+                elif port.anchored_align == sb.Alignment.E:
+                    x += (xr - xr0) + (wr - wr0)
+                    y *= (hr / hr0)
+
+                x, y = self.snap((x, y))
+
             path = gc.CreatePath()
-            path.MoveToPoint(x, y)
-            path.AddCircle(x, y, r)
+
+            # electrical port:
+            if port.direction == sb.PortDirection.INOUT:
+                path.MoveToPoint(x, y)
+                path.AddCircle(x, y, r)
+
+            # signal port:
+            if not port.direction == sb.PortDirection.INOUT:
+                arrow_rotation = 0.0  # -->
+
+                if port.direction == sb.PortDirection.IN:
+                    if port.block_edge == sb.Alignment.E:
+                        arrow_rotation = 0.0
+
+                    elif port.block_edge == sb.Alignment.W:
+                        arrow_rotation = sb.PI
+
+                    elif port.block_edge == sb.Alignment.N:
+                        arrow_rotation = -sb.PI_OVER_TWO
+
+                    elif port.block_edge == sb.Alignment.S:
+                        arrow_rotation = sb.PI_OVER_TWO
+
+                elif port.direction == sb.PortDirection.OUT:
+                    if port.block_edge == sb.Alignment.E:
+                        arrow_rotation = sb.PI
+
+                    elif port.block_edge == sb.Alignment.W:
+                        arrow_rotation = 0.0
+
+                    elif port.block_edge == sb.Alignment.N:
+                        arrow_rotation = sb.PI_OVER_TWO
+
+                    elif port.block_edge == sb.Alignment.S:
+                        arrow_rotation = -sb.PI_OVER_TWO
+
+                arrow_angle = sb.PI_OVER_FOUR
+                arrow_size = 10
+
+                ang0 = arrow_rotation - arrow_angle
+                ang1 = arrow_rotation + arrow_angle
+                x0 = x + arrow_size * math.cos(ang0)
+                y0 = y + arrow_size * math.sin(ang0)
+                x1 = x + arrow_size * math.cos(ang1)
+                y1 = y + arrow_size * math.sin(ang1)
+
+                path.MoveToPoint(x0, y0)
+                path.AddLineToPoint(x, y)
+                path.AddLineToPoint(x1, y1)
+
+            # transform this path to the blocks affine matrix:
             path.Transform(matrix)
 
             if len(port.connectors) > 1 or force_show:
-                # gc.StrokePath(path)
-                gc.FillPath(path)
+
+                if (port.direction == sb.PortDirection.IN
+                   or port.direction == sb.PortDirection.OUT):
+                    gc.StrokePath(path)
+                else:
+                    gc.FillPath(path)
+
+            path.Destroy()
 
             path = gc.CreatePath()
+            path.MoveToPoint(x, y)
             path.AddRectangle(x - r - m, y - r - m, (r + m) * 2, (r + m) * 2)
             path.Transform(matrix)
             port.bounding_rects[0], port.center = self.get_bounding(path)
+            path.Destroy()
+
+        for rrect in block.rrects:
+
+            for handle in rrect.handles.values():
+
+                force_show = False
+
+                if block.is_ghost:
+                    gc.SetPen(self.pen_ghost)
+                    gc.SetBrush(self.brush_ghost)
+                    force_show = True
+
+                elif block.selected:
+                    gc.SetPen(self.pen_select)
+                    gc.SetBrush(self.brush_select)
+                    force_show = True
+
+                elif handle.selected:
+                    gc.SetPen(self.pen_select)
+                    gc.SetBrush(self.brush_select)
+                    force_show = True
+
+                elif handle.hover:
+                    gc.SetPen(self.pen_select)
+                    gc.SetBrush(self.brush_select)
+                    force_show = True
+
+                elif block.hover:
+                    gc.SetPen(self.pen_hover)
+                    gc.SetBrush(self.brush_hover)
+                    force_show = True
+
+                else:
+                    gc.SetPen(self.pen)
+                    gc.SetBrush(self.brush)
+                    force_show = False
+
+                path = gc.CreatePath()
+
+                x, y = handle.position
+                s, m = sb.HANDLE_SIZE, sb.HANDLE_HIT_MARGIN
+
+                # draw handle square:
+
+                path = gc.CreatePath()
+                path.MoveToPoint(x, y)
+                path.AddRectangle(x - s/2, y - s/2, s, s)
+                path.Transform(matrix)
+
+                if force_show:
+                    # gc.StrokePath(path)
+                    gc.FillPath(path)
+
+                path.Destroy()
+
+                # create hit-testing box:
+
+                path = gc.CreatePath()
+
+                path.AddRectangle(x - s/2 - m, y - s/2 - m,
+                                  (s/2 + m) * 2, (s/2 + m) * 2)
+
+                path.Transform(matrix)
+                handle.bounding_rects[0], handle.center = self.get_bounding(path)
+                path.Destroy()
+
+        for field in block.fields:
+
+            font = wx.Font(field.size, wx.FONTFAMILY_ROMAN,
+                           wx.FONTWEIGHT_NORMAL, wx.FONTWEIGHT_NORMAL)
+
+            gcfont = gc.CreateFont(font, sb.DEVICE_COLOR)
+            gc.SetFont(gcfont)
+
+            xb, yb = self.snap(block.position)
+            xf, yf = field.position
+
+            if field.rect_anchor:
+                if field.rect_align == sb.Alignment.CENTER:
+                    xf = xf * field.rect_anchor.w / field.rect_anchor.w0
+                    yf = yf * field.rect_anchor.h / field.rect_anchor.h0
+                    xf = xf + field.rect_anchor.x0 + field.rect_anchor.x
+                    yf = yf + field.rect_anchor.y0 + field.rect_anchor.y
+
+            xt, yt = xb + xf, yb + yf
+
+            w, h, d, e = gc.GetFullTextExtent(field.text)
+
+            if field.align == sb.Alignment.NW:
+                pass
+
+            elif field.align == sb.Alignment.N:
+                xt -= w / 2
+
+            elif field.align == sb.Alignment.NE:
+                xt -= w
+
+            elif field.align == sb.Alignment.W:
+                yt -= h / 2
+
+            elif field.align == sb.Alignment.CENTER:
+                xt -= w / 2
+                yt -= h / 2
+
+            elif field.align == sb.Alignment.E:
+                xt -= w
+                yt -= h / 2
+
+            elif field.align == sb.Alignment.SW:
+                yt -= h
+
+            elif field.align == sb.Alignment.S:
+                xt -= w / 2
+                yt -= h
+
+            elif field.align == sb.Alignment.SE:
+                xt -= w
+                yt -= h
+
+            gc.DrawText(field.text, xt, yt)
+
+            field.bounding_rects[0] = (xt, yt, w, h)
+            field.center = (xt + w * 0.5, yt + h * 0.5)
+
+        for ratio in block.ratios:
+
+            # font = wx.Font(ratio.size, wx.FONTFAMILY_DEFAULT,
+            #                wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False,
+            #                "Courier 10 Pitch")
+            #
+            # gcfont = gc.CreateFont(font, sb.DEVICE_COLOR)
+            # gc.SetFont(gcfont)
+
+            xb, yb = self.snap(block.position)
+            xf, yf = ratio.position
+
+            if ratio.rect_anchor:
+                if ratio.rect_align == sb.Alignment.CENTER:
+                    xf = xf * ratio.rect_anchor.w / ratio.rect_anchor.w0
+                    yf = yf * ratio.rect_anchor.h / ratio.rect_anchor.h0
+                    xf = xf + ratio.rect_anchor.x0 + ratio.rect_anchor.x
+                    yf = yf + ratio.rect_anchor.y0 + ratio.rect_anchor.y
+
+
+            bmp = block.bmp
+
+            m = 5
+
+            we, he = bmp.GetSize()
+
+            xr, yr = ratio.rect_anchor.x, ratio.rect_anchor.y
+            wr, hr = ratio.rect_anchor.w, ratio.rect_anchor.h
+
+            we2 = min(we, wr - m * 2)
+            he *= (we2 / we)
+            he2 = min(he, hr - m * 2)
+            we2 *= (he2 / he)
+
+            if ratio.align == sb.Alignment.CENTER:
+                xf = xb + wr / 2 - we2 / 2
+                yf = yb + hr / 2 - he2 / 2
+
+            gc.DrawBitmap(bmp, xf, yf, we2, he2)
+
+            # num = unicode_print(ratio.numerator)
+            # den = unicode_print(ratio.denominator)
+            #
+            # wn, hn, dn, en = gc.GetFullTextExtent(num)
+            # wd, hd, dd, ed = gc.GetFullTextExtent(den)
+
+            # xn, yn = xb + xf, yb + yf
+            #
+            # xd, yd = xb + xf, yb + hn * 2 + yf
+            #
+            # if ratio.align == sb.Alignment.NW:
+            #     pass
+            #
+            # elif ratio.align == sb.Alignment.N:
+            #     xn -= wn / 2
+            #     xd -= wd / 2
+            #
+            # elif ratio.align == sb.Alignment.NE:
+            #     xn -= wn
+            #     xd -= wd
+            #
+            # elif ratio.align == sb.Alignment.W:
+            #     yn -= hn / 2
+            #     yd -= hd / 2
+            #
+            # elif ratio.align == sb.Alignment.CENTER:
+            #     xn -= wn / 2
+            #     yn -= hn / 2
+            #     xd -= wd / 2
+            #     yd -= hd / 2
+            #
+            # elif ratio.align == sb.Alignment.E:
+            #     xn -= wn
+            #     yn -= hn / 2
+            #     xd -= wd
+            #     yd -= hd / 2
+            #
+            # elif ratio.align == sb.Alignment.SW:
+            #     yn -= hn
+            #     yd -= hd
+            #
+            # elif ratio.align == sb.Alignment.S:
+            #     xn -= wn / 2
+            #     yn -= hn
+            #     xd -= wd / 2
+            #     yd -= hd
+            #
+            # elif ratio.align == sb.Alignment.SE:
+            #     xn -= wn
+            #     yn -= hn
+            #     xd -= wd
+            #     yd -= hd
+
+            # gc.DrawText(num, xn, yn - hn)
+            # gc.DrawText(den, xd, yd - hn)
+            # yline = yn + 0.5 * hn
+            # xline1 = min(xn, xd)
+            # xline2 = max(xn + wn, xd + wd)
+            # gc.DrawLines([(xline1, yline), (xline2, yline)])
+            #
+            # ratio.bounding_rects[0] = (xn, yn, wn, hn)
+            # ratio.center = (xn + wn * 0.5, yn + hn * 0.5)
 
     def draw_connector(self, connector, gc):
 
@@ -1239,6 +1743,17 @@ class SchematicWindow(wx.Panel):
 
         if connector.partial:
             path.AddLineToPoint(*connector.end)
+
+        if connector.is_directional:
+            if connector.partial:
+                connector.update_arrow(connector.end)
+            else:
+                p1, p2 = connector.segments[-1]
+                connector.update_arrow(self.snap(p2))
+            p1, p2, p3 = connector.arrow
+            path.MoveToPoint(p1)
+            path.AddLineToPoint(p2)
+            path.AddLineToPoint(p3)
 
         gc.StrokePath(path)
 
@@ -1282,70 +1797,6 @@ class SchematicWindow(wx.Panel):
                 path.MoveToPoint(x, y)
                 path.AddCircle(x, y, r)
                 gc.FillPath(path)
-
-    def draw(self, dc):
-        self.dc = dc
-        w, h = self.dc.GetSize()
-        gc = wx.GraphicsContext.Create(self.dc)
-
-        # translate:
-        gc.Translate(self.dx, self.dy)
-
-        # scale:
-        gc.Scale(self.scale, self.scale)
-
-        # grid:
-        self.draw_grid(gc)
-
-        if sb.SHOW_CROSSHAIR:
-            path = gc.CreatePath()
-            path.AddCircle(self.x, self.y, 5)
-            gc.SetPen(wx.Pen(wx.Colour(100, 200, 100), 1))
-            gc.SetBrush(wx.Brush(wx.Colour(100, 200, 100)))
-            gc.FillPath(path)
-
-        # schematic:
-        for name, block in self.blocks.items():
-            self.draw_block(block, gc)
-
-        for connector in self.connectors:
-            self.draw_connector(connector, gc)
-
-
-        # debug: show hit boxes:
-
-        ALL_BOXES = False
-        ONE_BOX = True
-
-        if ALL_BOXES:
-            icolor = 0
-            colors = [wx.Colour(200, 100, 100),
-                      wx.Colour(100, 200, 100),
-                      wx.Colour(100, 100, 200),
-                      wx.Colour(150, 50, 50),
-                      wx.Colour(50, 150, 50),
-                      wx.Colour(50, 50, 150)]
-
-            line_width = 2
-            for obj in self.hit_objects:
-                path = gc.CreatePath()
-                for rect in obj.bounding_rects:
-                    x, y, w, h = rect
-                    path.AddRoundedRectangle(x, y, w, h, 2)
-                gc.SetPen(wx.Pen(colors[icolor], line_width))
-                gc.StrokePath(path)
-                icolor += 1
-                icolor = min(icolor, len(colors)-1)
-
-        elif ONE_BOX:
-            if self.top_obj:
-                path = gc.CreatePath()
-                for rect in self.top_obj.bounding_rects:
-                    if not rect == (0, 0, 0, 0):
-                        x, y, w, h = rect
-                        path.AddRoundedRectangle(x, y, w, h, 2)
-                gc.SetPen(wx.Pen(wx.Colour(200, 100, 100), 2))
-                gc.StrokePath(path)
 
     def build_netlist(self):
 
@@ -1407,7 +1858,11 @@ class SchematicWindow(wx.Panel):
             else:
                 port_groups.append(port_group)
 
+        # now build the netlist:
+
         netlist = net.Netlist(self.name)
+
+        engine2block = {}
 
         for name, block in self.blocks.items():
             if not block.is_ground:
@@ -1426,8 +1881,35 @@ class SchematicWindow(wx.Panel):
                     netlist.device(block.name, block.get_engine(nodes,
                                                                 netlist))
                 else:
+                    engine = block.get_engine(nodes)
+                    engine2block[engine] = block
+                    netlist.device(block.name, engine)
+                    if isinstance(engine, inter.SignalDevice):
+                        pass
 
-                    netlist.device(block.name, block.get_engine(nodes))
+        # now setup references for signal propagation:
+
+        nodeports = {}
+
+        for key, node in netlist.nodes.items():
+            nodeports[node] = []
+            for device in netlist.devices.values():
+                for port, node2 in device.port2node.items():
+                    if node == node2:
+                        nodeports[node].append((device, port))
+
+        for node, ports in nodeports.items():
+
+            for device1, port1 in ports:
+                port2port = {}
+                block = engine2block[device1]
+                for blockport in block.ports.values():
+                    if blockport.index == port1:
+                        if blockport.direction == sb.PortDirection.OUT:
+                            port2port[port1] = []
+                            for device2, port2 in ports:
+                                port2port[port1].append((device2, port2))
+                device1.port2port = port2port
 
         return netlist
 
@@ -1561,6 +2043,9 @@ class MainFrame(gui.MainFrame):
         active_schematic = self.active_schem
         self.active_script = None
 
+        # param table(s):
+        self.param_table = None
+
         # additional bindings (others are in gui.py):
 
         self.Bind(aui.EVT_AUINOTEBOOK_PAGE_CLOSED, self.on_page_close,
@@ -1668,9 +2153,14 @@ class MainFrame(gui.MainFrame):
                     name = DEF_SCHEM_NAME.format(self.schcnt) + ".sch"
         self.schcnt += 1
         sch = sb.Schematic(name)
+        sch.sim_settings = DEF_SIM_SETTINGS
         schem = SchematicWindow(subcircuit.ntb_editor, sch)
 
-        self.ntb_editor.AddPage(schem, name, True, self.schem16)
+        paramlist = sch.parameters
+        self.param_table = param.ParameterTable(subcircuit.ntb_editor, paramlist)
+
+        self.ntb_editor.AddPage(schem, "Block Diagram", True, self.schem16)
+        self.ntb_editor.AddPage(self.param_table, "Parameters", False, self.schem16)
 
         self.schematics[name] = schem
         self.active_schem = schem
@@ -1694,11 +2184,17 @@ class MainFrame(gui.MainFrame):
     def save_schematic(self, schem, path):
         try:
             with open(path, 'w') as f:
-                schem = clone(schem.schematic)
+                sch = schem.schematic.clone()
+                paramlist = self.param_table.paramlist
+                sch.parameters = paramlist
                 # remove plot curves:
-                for device in schem.blocks.values():
+                for device in sch.blocks.values():
                     device.plot_curves = []
-                pickle.dump(schem, f)
+                    try:
+                        device.bmp = None
+                    except:
+                        pass
+                pickle.dump(sch, f)
                 wx.MessageBox("File saved to: [{0}]".format(path))
                 pth, file_ = os.path.split(path)
                 self.ntb_editor.SetPageText(self.ntb_editor.GetSelection(),
@@ -1718,9 +2214,15 @@ class MainFrame(gui.MainFrame):
         schem = SchematicWindow(subcircuit.ntb_editor, sch)
         self.schematics[name] = schem
         self.active_schem = schem
-        active_schematic = self.active_schem
 
-        self.ntb_editor.AddPage(schem, name, True, self.schem16)
+        for block in self.active_schem.blocks.values():
+            block.design_update()
+
+        paramlist = sch.parameters
+        self.param_table = param.ParameterTable(subcircuit.ntb_editor, paramlist)
+
+        self.ntb_editor.AddPage(schem, "Block Diagram", True, self.schem16)
+        self.ntb_editor.AddPage(self.param_table, "Parameters", False, self.schem16)
 
     def run(self):
         if self.active_schem:
@@ -1795,8 +2297,6 @@ class MainFrame(gui.MainFrame):
         self.ntb_editor.AddPage(script, name + ".py", True, self.pytext16)
 
         self.active_script = script
-
-
 
     def add_gadget(self, type_):
         if self.active_schem:
@@ -1915,14 +2415,19 @@ if __name__ == '__main__':
 
     app = SubCircuitApp()
 
-    subcircuit = MainFrame(redirect=True)
+    subcircuit = MainFrame(redirect=False)
     subcircuit.SetSize((1000, 600))
     subcircuit.SetPosition((100, 100))
     subcircuit.new_schem()
 
     # debug code:
+
+    # mac:
     #subcircuit.open_schematic("/Users/josephmhood/Documents/cir1.sch")
+
+    # pc:
     #subcircuit.open_schematic("C:/Users/josephmhood/Desktop/Cir1.sch")
+
     #subcircuit.run()
 
     if is_windows:

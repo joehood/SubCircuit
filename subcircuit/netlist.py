@@ -57,6 +57,7 @@ class Netlist():
         self.simulator = sim.Simulator(self)
         self.converged = False
         self.dt = 0.0
+        self.electrical = False
 
     def flatten(self):
 
@@ -112,25 +113,35 @@ class Netlist():
                     msg.format(x_device.subckt, x_name)
                     raise SubCircuitError(msg)
 
-    def setup(self, dt):
+    def start(self, dt):
         """Calls setup() on all of this subcircuit devices.
         Setup is called at the beginning of the simulation and allows the
         intial stamps to be applied.
         """
-        # dimension matrices:
-        n = self.nodenum
-        self.across = np.zeros(n)
-        self.across_last = np.zeros(n)
-        self.across_history = np.zeros(n)
-        self.jac = np.zeros((n, n))
-        self.bequiv = np.zeros(n)
 
-        # setup devices:
+        # determine if electrical devices (or only signal)
+        self.electrical = False
+        for device in self.devices.values():
+            if not self.is_signal_device(device):
+                self.electrical = True
+                break
+
+        # setup matrices:
+        if self.electrical:
+            n = self.nodenum
+            self.across = np.zeros(n)
+            self.across_last = np.zeros(n)
+            self.across_history = np.zeros(n)
+            self.jac = np.zeros((n, n))
+            self.bequiv = np.zeros(n)
+
+        # call start on devices:
         for device in self.devices.values():
             device.start(dt)
 
         # stamp the ciruit:
-        self.stamp()
+        if self.electrical:
+            self.stamp()
 
     def stamp(self):
         """Stamps the main subcircuit devices.
@@ -153,19 +164,30 @@ class Netlist():
         success = True
 
         k = 0
-        self.converged = False
-        while k < self.simulator.maxitr and not self.converged:
-            success = self.minor_step(dt, t, k)
-            if not success:
-                break
-            k += 1
 
-        self.across_last = np.copy(self.across) # update netwon state at k=0
-        self.across_history = np.copy(self.across)  # save off across history
+        if self.electrical:
+            self.converged = False
+            while k < self.simulator.maxitr and not self.converged:
+                success = self.minor_step(dt, t, k)
+                if not success:
+                    break
+                k += 1
+
+            # update netwon state at k=0
+            self.across_last = np.copy(self.across)
+
+            # save off across history
+            self.across_history = np.copy(self.across)
+
+        self.signal_step(dt, t)
 
         for device in self.devices.values():
             device.post_step(dt, t)
 
+        # now step the signal devices after the electrical system is converged:
+        self.signal_step(dt, t)
+
+        # debug:
         # self.print_matrices()
 
         return success, k
@@ -239,6 +261,24 @@ class Netlist():
         self.across_last = np.copy(self.across)
 
         return success
+
+    def is_signal_device(self, device):
+        return isinstance(device, inter.SignalDevice)
+
+    def signal_step(self, dt, t):
+
+        # propogate output values:
+        for device1 in self.devices.values():
+            if self.is_signal_device(device1):
+                for port1, connected_ports in device1.port2port.items():
+                    value = device1.get_port_value(port1)
+                    for device2, port2 in connected_ports:
+                        device2.set_port_value(port2, value)
+
+        # update outputs:
+        for device in self.devices.values():
+            if self.is_signal_device(device):
+                device.step(dt, t)
 
     def get_node_index(self, key):
         if not key in self.nodes:

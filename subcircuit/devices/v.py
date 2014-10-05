@@ -206,7 +206,6 @@ class VSinBlock(sb.Block):
         self.properties['Damping factor (1/s)'] = 0.0
         self.properties['Phase (rad)'] = 0.0
 
-
     def get_engine(self, nodes):
         vo = self.properties['Voltage Offset (V)']
         va = self.properties['Voltage Amplitude (V)']

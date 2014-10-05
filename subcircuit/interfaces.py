@@ -50,6 +50,11 @@ class Device(object):
         self.parameters = parameters
         self.value = None
 
+        # dict of [port_index1]: (engine, port_index2)
+        # for mapping engine ports. Populated when netlist is created:
+        self.port2port = None
+
+
     def connect(self):
         """Virtual class. Must be implemented by derived class.
         :return: None.
@@ -213,6 +218,25 @@ class MNADevice(Device):
 class SignalDevice(Device):
     def __init__(self, nodes, **parameters):
         Device.__init__(self, nodes, **parameters)
+        self.portvalues = []
+
+        # note that numnodes must == numports in signal devices
+
+        for n in range(len(nodes)):
+            self.portvalues.append(0.0)
+
+    def set_port_value(self, i, value):
+        if i < len(self.portvalues):
+            self.portvalues[i] = value
+            return True
+        else:
+            return False
+
+    def get_port_value(self, i):
+        if i < len(self.portvalues):
+            return self.portvalues[i]
+        else:
+            return None
 
 
 class Model(object):

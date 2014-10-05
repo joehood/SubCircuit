@@ -111,7 +111,7 @@ class Simulator():
 
         # determine the time-series array length and setup the circuit:
         n = int(tstop / tstep) + 1
-        self.netlist.setup(tstep)
+        self.netlist.start(tstep)
         self.tmax = tstop
 
         # allocate the arrays and save to variables for plot():
