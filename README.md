@@ -19,7 +19,7 @@ I'm looking for someone with Python and EE experience to help develop the rest o
 PySpyce allows the creation of netlists through a schematic editor or directly with a Python script.
 
 
-###Graphical Example:###
+###Graphical Example
 
 On a Mac:
 
@@ -33,7 +33,7 @@ Plotting:
 
 ![alt text](subcircuit/artwork/screen4.png "")
 
-###Programmatic Netlist Development:###
+###Programmatic Netlist Development
 
 ```python
 netlist = Netlist("Distributed Tline")
@@ -67,7 +67,7 @@ netlist.plot(*voltages)
 ![alt text](subcircuit/artwork/screen5.png "")
 
 
-###Or Build Netlists Just As You Would in SPICE:###
+###Or Build Netlists Just As You Would in SPICE
 
 ```python
 # SPICE Netlist:
