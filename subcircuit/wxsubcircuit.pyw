@@ -241,6 +241,7 @@ class BlockDropTarget(wx.TextDropTarget):
         name = self.strip_non_ascii(name).strip( )
         self.schematic_window.start_add(name, position=(x, y))
         self.schematic_window.Refresh()
+        return True
 
     def strip_non_ascii(self, s):
 
@@ -416,6 +417,8 @@ class SchematicWindow(wx.Panel):
 
         if isinstance(connection, sb.Port):
             self.active_connector.add_port(connection)
+            if connection.direction == sb.PortDirection.INOUT:
+                self.active_connector.is_directional = False
         elif isinstance(connection, sb.KneePoint):
             self.active_connector.add_knee(connection)
 
@@ -499,7 +502,7 @@ class SchematicWindow(wx.Panel):
             self.x0_object = 0.0
             self.y0_object = 0.0
 
-        self.SetCursor(wx.StockCursor(wx.CURSOR_CROSS))
+        self.SetCursor(wx.Cursor(wx.CURSOR_CROSS))
         self.last_mouse_position = (event.x, event.y)
         self.last_position = spt
         self.Refresh()
@@ -577,7 +580,7 @@ class SchematicWindow(wx.Panel):
                 knee = sb.KneePoint(self.active_connector, spt)
                 self.active_connector.add_segment(knee)
 
-        self.SetCursor(wx.StockCursor(wx.CURSOR_CLOSED_HAND))
+        self.SetCursor(wx.Cursor(wx.CURSOR_HAND))
         self.last_mouse_position = (event.x, event.y)
         self.last_position = spt
         self.clean_up()
@@ -1418,46 +1421,50 @@ class SchematicWindow(wx.Panel):
 
             path = gc.CreatePath()
 
-            # electrical port:
-            if port.direction == sb.PortDirection.INOUT:
+            arrow_rotation = 0.0
+
+            if port.direction == sb.PortDirection.INOUT:  # electrical port
+
                 path.MoveToPoint(x, y)
                 path.AddCircle(x, y, r)
+            
+            elif port.direction == sb.PortDirection.IN:  # signal port
 
-            # signal port:
-            if not port.direction == sb.PortDirection.INOUT:
-                arrow_rotation = 0.0  # -->
+                if port.block_edge == sb.Alignment.E:
+                    arrow_rotation = 0.0
 
-                if port.direction == sb.PortDirection.IN:
-                    if port.block_edge == sb.Alignment.E:
-                        arrow_rotation = 0.0
+                elif port.block_edge == sb.Alignment.W:
+                    arrow_rotation = sb.PI
 
-                    elif port.block_edge == sb.Alignment.W:
-                        arrow_rotation = sb.PI
+                elif port.block_edge == sb.Alignment.N:
+                    arrow_rotation = -sb.PI_OVER_TWO
 
-                    elif port.block_edge == sb.Alignment.N:
-                        arrow_rotation = -sb.PI_OVER_TWO
+                elif port.block_edge == sb.Alignment.S:
+                    arrow_rotation = sb.PI_OVER_TWO
 
-                    elif port.block_edge == sb.Alignment.S:
-                        arrow_rotation = sb.PI_OVER_TWO
+            elif port.direction == sb.PortDirection.OUT:
 
-                elif port.direction == sb.PortDirection.OUT:
-                    if port.block_edge == sb.Alignment.E:
-                        arrow_rotation = sb.PI
+                if port.block_edge == sb.Alignment.E:
+                    arrow_rotation = sb.PI
 
-                    elif port.block_edge == sb.Alignment.W:
-                        arrow_rotation = 0.0
+                elif port.block_edge == sb.Alignment.W:
+                    arrow_rotation = 0.0
 
-                    elif port.block_edge == sb.Alignment.N:
-                        arrow_rotation = sb.PI_OVER_TWO
+                elif port.block_edge == sb.Alignment.N:
+                    arrow_rotation = sb.PI_OVER_TWO
 
-                    elif port.block_edge == sb.Alignment.S:
-                        arrow_rotation = -sb.PI_OVER_TWO
+                elif port.block_edge == sb.Alignment.S:
+                    arrow_rotation = -sb.PI_OVER_TWO
+
+
+            if port.direction in (sb.PortDirection.IN, sb.PortDirection.OUT):
 
                 arrow_angle = sb.PI_OVER_FOUR
                 arrow_size = 10
 
                 ang0 = arrow_rotation - arrow_angle
                 ang1 = arrow_rotation + arrow_angle
+
                 x0 = x + arrow_size * math.cos(ang0)
                 y0 = y + arrow_size * math.sin(ang0)
                 x1 = x + arrow_size * math.cos(ang1)
@@ -1555,7 +1562,7 @@ class SchematicWindow(wx.Panel):
         for field in block.fields:
 
             font = wx.Font(field.size, wx.FONTFAMILY_ROMAN,
-                           wx.FONTWEIGHT_NORMAL, wx.FONTWEIGHT_NORMAL)
+                           wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False)
 
             gcfont = gc.CreateFont(font, sb.DEVICE_COLOR)
             gc.SetFont(gcfont)
@@ -1943,8 +1950,8 @@ class DeviceTree(wx.TreeCtrl):
         self.root = self.AddRoot("Library")
         self.root.device_type = None
 
-        images = load.get_block_images(blocks, color='black')
-        images_sel = load.get_block_images(blocks, color='white', width=7)
+        images = load.get_block_thumbnails(blocks, width=5)
+        images_sel = images.copy()
 
         w, h = 36, 36
 
@@ -1972,7 +1979,7 @@ class DeviceTree(wx.TreeCtrl):
             else:
                 index, index_sel = -1, -1
             item = self.AppendItem(famnodes[family], name, index, index_sel)
-            self.SetItemPyData(item, name)
+            self.SetItemData(item, name)
 
 
         # bindings:
@@ -1985,7 +1992,7 @@ class DeviceTree(wx.TreeCtrl):
 
     def on_begin_drag(self, event):
         if self.selected_item:
-            name = self.GetItemPyData(self.selected_item)
+            name = self.GetItemData(self.selected_item)
             drag_source = wx.DropSource(self)
             dataobj = wx.TextDataObject(name)
             dataobj.device_type = name
@@ -2008,16 +2015,16 @@ class MainFrame(gui.MainFrame):
 
         self.imagelist = wx.ImageList(16, 16)
 
-        image = wx.Image("artwork/pylogo16.gif", wx.BITMAP_TYPE_GIF)
+        image = wx.Image("./artwork/pylogo16.gif", wx.BITMAP_TYPE_GIF)
         self.pylogo16 = self.imagelist.Add(image.ConvertToBitmap())
 
-        image = wx.Image("artwork/pytext16.png", wx.BITMAP_TYPE_PNG)
+        image = wx.Image("./artwork/pytext16.png", wx.BITMAP_TYPE_PNG)
         self.pytext16 = self.imagelist.Add(image.ConvertToBitmap())
 
-        image = wx.Image("artwork/schem16.png", wx.BITMAP_TYPE_PNG)
+        image = wx.Image("./artwork/schem16.png", wx.BITMAP_TYPE_PNG)
         self.schem16 = self.imagelist.Add(image.ConvertToBitmap())
 
-        image = wx.Image("artwork/chip16.png", wx.BITMAP_TYPE_PNG)
+        image = wx.Image("./artwork/chip16.png", wx.BITMAP_TYPE_PNG)
         self.chip16 = self.imagelist.Add(image.ConvertToBitmap())
 
         self.ntb_left.SetImageList(self.imagelist)
@@ -2051,7 +2058,7 @@ class MainFrame(gui.MainFrame):
         self.Bind(aui.EVT_AUINOTEBOOK_PAGE_CLOSED, self.on_page_close,
                   self.ntb_editor)
 
-        self.Bind(aui.EVT__AUINOTEBOOK_TAB_RIGHT_DOWN, self.on_schem_context,
+        self.Bind(aui.EVT_AUINOTEBOOK_TAB_RIGHT_DOWN, self.on_schem_context,
                   self.ntb_editor)
 
         # add all loaded devices to the window:
@@ -2072,9 +2079,9 @@ class MainFrame(gui.MainFrame):
         for family, famblocks in blocks_by_family.items():
             sub_menu = wx.Menu()
             for key, block in famblocks.items():
-                event_id = wx.NewId()
+                event_id = wx.NewIdRef()
                 item = wx.MenuItem(sub_menu, event_id, key)
-                sub_menu.AppendItem(item)
+                sub_menu.Append(item)
                 self.Bind(wx.EVT_MENU, self.on_add_device, id=event_id)
                 self.add_event_devices[event_id] = key
 
@@ -2159,7 +2166,7 @@ class MainFrame(gui.MainFrame):
         paramlist = sch.parameters
         self.param_table = param.ParameterTable(subcircuit.ntb_editor, paramlist)
 
-        self.ntb_editor.AddPage(schem, "Block Diagram", True, self.schem16)
+        self.ntb_editor.AddPage(schem, "Schematic", True, self.schem16)
         self.ntb_editor.AddPage(self.param_table, "Parameters", False, self.schem16)
 
         self.schematics[name] = schem
@@ -2411,6 +2418,8 @@ if __name__ == '__main__':
 
     is_windows = wx.Platform == "__WXMSW__"
 
+    os.chdir(os.path.dirname(os.path.realpath(sys.argv[0])))
+
     blocks, engines = load.import_devices("devices")
 
     app = SubCircuitApp()
@@ -2419,16 +2428,6 @@ if __name__ == '__main__':
     subcircuit.SetSize((1000, 600))
     subcircuit.SetPosition((100, 100))
     subcircuit.new_schem()
-
-    # debug code:
-
-    # mac:
-    #subcircuit.open_schematic("/Users/josephmhood/Documents/cir1.sch")
-
-    # pc:
-    #subcircuit.open_schematic("C:/Users/josephmhood/Desktop/Cir1.sch")
-
-    #subcircuit.run()
 
     if is_windows:
         import ctypes

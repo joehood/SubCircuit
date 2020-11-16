@@ -1,0 +1,23 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28307.1267
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{888888A0-9F3D-457C-B088-3A5042F75D52}") = "SubCircuit", "SubCircuit.pyproj", "{CEC62458-F7E1-4280-9AC8-7D1B9F0AD62A}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{CEC62458-F7E1-4280-9AC8-7D1B9F0AD62A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CEC62458-F7E1-4280-9AC8-7D1B9F0AD62A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {1537B194-9126-4A5E-9A35-57712E64035E}
+	EndGlobalSection
+EndGlobal

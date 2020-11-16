@@ -19,6 +19,7 @@ import numpy as np
 
 
 class DeviceFamilies(object):
+
     ELEMENTARY = 0
     INDEPENDANT_SOURCES = 1
     LINEAR_DEPENDANT_SOURCES = 2
@@ -28,7 +29,10 @@ class DeviceFamilies(object):
 
 
 class Device(object):
+
     """A Device (circuit element) base object."""
+
+    is_device = True
 
     def __init__(self, nodes, family=None, **parameters):
         """Creates a device base.
@@ -107,6 +111,7 @@ class Device(object):
         return across
 
     def get_across(self, port1=None, port2=None, external_device=None):
+
         """Gets the across value for the current time and newton iteration
         If port2 is not provided, the across value returned is the across value
         of port1's node with respect to ground.
@@ -117,7 +122,8 @@ class Device(object):
         across a 2-port device with the given key if it exists within the
         subcircuit
         :return: Voltage in Volts
-        """
+ 
+ """
         if self.netlist.across_last is not None:
             across = float('inf')
             if external_device:
@@ -136,10 +142,12 @@ class Device(object):
             return 0.0
 
     def start(self, dt):
+ 
         """Virtual method. Must be implemented by derived class.
         Called at the beginning of the simulation before the parent subcircuit's
         setup method is called and before the subcircuit's stamp is created.
         Should setup the initial device jacobian and bequiv stamps.
+
         """
         pass
 
@@ -187,6 +195,7 @@ class Device(object):
 
 
 class MNADevice(Device):
+
     """A Device (circuit element) base object."""
 
     def __init__(self, nodes, internals, **parameters):
@@ -216,6 +225,7 @@ class MNADevice(Device):
 
 
 class SignalDevice(Device):
+
     def __init__(self, nodes, **parameters):
         Device.__init__(self, nodes, **parameters)
         self.portvalues = []
@@ -240,6 +250,9 @@ class SignalDevice(Device):
 
 
 class Model(object):
+
+    is_model = True
+
     """Base model (.model) object."""
 
     def __init__(self, name, **kwargs):
@@ -254,6 +267,7 @@ class Model(object):
 
 
 class Subckt(object):
+
     """A SPICE subcircuit definition (.subckt)"""
 
     def __init__(self, ports, **parameters):
@@ -287,6 +301,7 @@ class Subckt(object):
 
 
 class CurrentSensor(object):
+
     """Interface for current sensor device.
     Should derive from this class and implement get_current_node if this
     device has the ability to provide branch current information via an internal
@@ -321,6 +336,7 @@ class Stimulus(object):
 
 
 class Table(object):
+
     """Generic lookup table for transfer functions of dependant sources."""
 
     def __init__(self, *pairs):
@@ -360,11 +376,13 @@ class Table(object):
 
 
 class Plottable:
+
     def __init__(self):
         pass
 
 
 class Voltage(Plottable):
+
     """Represents a plottable voltage value."""
 
     def __init__(self, node1=None, node2=0, device=None):
@@ -385,6 +403,7 @@ class Voltage(Plottable):
 
 
 class Current(Plottable):
+
     """Represents a plottable current value."""
 
     def __init__(self, vsource):

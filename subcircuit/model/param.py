@@ -56,7 +56,7 @@ class ParameterTable(wxGrid):
         self.SetDefaultCellAlignment(wx.ALIGN_LEFT, wx.ALIGN_TOP)
 
         # Connect Events
-        self.Bind(wx.grid.EVT_GRID_CELL_CHANGE, self.on_grid_update)
+        self.Bind(wx.grid.EVT_GRID_CELL_CHANGED, self.on_grid_update)
 
         # load:
         self.data2grid()

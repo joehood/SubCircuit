@@ -1,0 +1,8 @@
+
+subcircuit/__pycache__/
+
+*.pyc
+
+.vs/SubCircuit/v15/
+
+subcircuit/equ.png

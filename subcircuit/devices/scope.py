@@ -109,19 +109,19 @@ class Scope5Block(sb.Block):
 
         # ports:
         self.ports['input1'] = sb.Port(self, 0, (0, 20),
-                                       sb.PortDirection.IN, sb.Alignment.E)
+                                       sb.PortDirection.IN, sb.Alignment.W)
 
         self.ports['input2'] = sb.Port(self, 1, (0, 40),
-                                       sb.PortDirection.IN, sb.Alignment.E)
+                                       sb.PortDirection.IN, sb.Alignment.W)
 
         self.ports['input3'] = sb.Port(self, 2, (0, 60),
-                                       sb.PortDirection.IN, sb.Alignment.E)
+                                       sb.PortDirection.IN, sb.Alignment.W)
 
         self.ports['input4'] = sb.Port(self, 3, (0, 80),
-                                       sb.PortDirection.IN, sb.Alignment.E)
+                                       sb.PortDirection.IN, sb.Alignment.W)
 
         self.ports['input5'] = sb.Port(self, 4, (0, 100),
-                                       sb.PortDirection.IN, sb.Alignment.E)
+                                       sb.PortDirection.IN, sb.Alignment.W)
 
         # rects:
         (w, h), m = self.size, self.margin
@@ -173,16 +173,16 @@ class Scope5Block(sb.Block):
             if include1:
                 all += values1
 
-            if include1:
+            if include2:
                 all += values2
 
-            if include1:
+            if include3:
                 all += values3
 
-            if include1:
+            if include4:
                 all += values4
 
-            if include1:
+            if include5:
                 all += values5
 
             if not all:

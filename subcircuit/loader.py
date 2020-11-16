@@ -17,6 +17,7 @@ limitations under the License.
 
 import inspect
 import os
+import sys
 
 import wx
 
@@ -33,8 +34,8 @@ def load_engines_to_module(module, dir="devices"):
     devicemods = {}
 
     for modpath in modpaths:
-        name, ext = modpath.split(".")
-        if not name == "__init__" and ext == "py":
+        name, ext =  os.path.splitext(modpath)
+        if not name == "__init__" and ext == ".py":
             devicemods[name] = __import__("subcircuit.devices." + name,
                                           fromlist=[name])
     for name, mod in devicemods.items():
@@ -56,24 +57,32 @@ def import_devices(package="devices"):
     devicemods = {}
 
     for modpath in modpaths:
-        name, ext = modpath.split(".")
-        if not name == "__init__" and ext == "py":
+        name, ext = os.path.splitext(modpath)
+        if not name == "__init__" and ext == ".py":
             devicemods[name] = __import__("subcircuit." + package + "." + name,
                                           fromlist=[name])
 
     for name, mod in devicemods.items():
         clsdefs = inspect.getmembers(mod, inspect.isclass)
         for clsname, cls in clsdefs:
-            if issubclass(cls, sb.Block):
+            is_type = False
+            try:
+                is_type = cls.is_device
+                engines[clsname] = cls
+            except AttributeError:
+                pass
+            try:
+                is_type = cls.is_block
                 friendly_name = cls.friendly_name
                 blocks[friendly_name] = cls
-            elif issubclass(cls, inter.Device):
-                engines[clsname] = cls
+            except AttributeError:
+                pass
 
     return blocks, engines
 
 
-def get_block_bitmap(type_, color=wx.Colour(0,0,0), width=5):
+def get_block_thumbnail(type_, fgcolor=wx.Colour(0, 0, 0),
+                     bgcolor=wx.Colour(255, 255, 255), width=5):
 
     size = (120, 120)
 
@@ -82,16 +91,19 @@ def get_block_bitmap(type_, color=wx.Colour(0,0,0), width=5):
     except:
         pass
 
-    bitmap = wx.EmptyBitmap(*size)
+    bitmap = wx.Bitmap(*size)
     dc = wx.MemoryDC()
     dc.SelectObject(bitmap)
-    type_.symbol.draw(dc, color=color, width=width)
+    dc.Clear()
+    dc.SetBackground(wx.Brush(bgcolor))
+    type_.symbol.draw(dc, color=fgcolor, fill=bgcolor, width=width)
     dc.SelectObject(wx.NullBitmap)
 
     return bitmap
 
 
-def get_block_images(blocks, color=wx.Colour(0,0,0), width=5):
+def get_block_thumbnails(blocks, fgcolor=wx.Colour(0, 0, 0),
+                     bgcolor=wx.Colour(255, 255, 255), width=5):
     """
     :param package:
     :return:
@@ -101,19 +113,25 @@ def get_block_images(blocks, color=wx.Colour(0,0,0), width=5):
 
     for name, block_type in blocks.items():
         try:
-            bitmap = get_block_bitmap(block_type, color=color, width=width)
+            bitmap = get_block_thumbnail(block_type, fgcolor, bgcolor, width)
             image = bitmap.ConvertToImage()
             images[name] = image
         except Exception as e:
-            pass
+            print(f"Error getting block bitmap: {e}")
+
+    # debug:
+
+    for name, image in images.items():
+        image.SaveFile(f"c:\\temp\\images\\{name}.png", wx.BITMAP_TYPE_PNG)
 
     return images
 
 
 if __name__ == "__main__":
 
+    os.chdir(os.path.dirname(os.path.realpath(sys.argv[0])))
+
     engines, blocks = import_devices("devices")
-    images = get_block_images(blocks)
+    images = get_block_thumbnails(blocks)
     for name, image in images.items():
-        image.SaveFile('Users/josephmhood/Documents/test/{0}.png'.format(name),
-                       wx.BITMAP_TYPE_PNG)
+        image.SaveFile(f"c:\\temp\\{name}.png", wx.BITMAP_TYPE_PNG)

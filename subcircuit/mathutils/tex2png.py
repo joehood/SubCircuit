@@ -66,6 +66,7 @@ class MathPanel(wx.Panel):
 
 
 class MathFrame(wx.Frame):
+
     def __init__(self):
 
         wx.Frame.__init__(self, None, -1, pos=(10, 10),
@@ -79,10 +80,12 @@ class MathFrame(wx.Frame):
         self.math_panel = MathPanel(frmPanel)
 
         self.input_box = wx.TextCtrl(frmPanel, size=(500, -1))
+
         self.input_box.Font = wx.Font(10,
-                                      wx.FONTFAMILY_TELETYPE,
+                                      wx.FONTFAMILY_ROMAN,
                                       wx.FONTSTYLE_NORMAL,
                                       wx.FONTWEIGHT_NORMAL)
+
         self.input_box.Bind(wx.EVT_TEXT, self.OnText)
 
         equation = r'Goober = {\min(\int\ (\ {\delta{(\ \pi{}*\frac{\sum(\ a+\O\o\l\S\P\L\{b\}\ )\ } {( c-d )}})}\ )}'

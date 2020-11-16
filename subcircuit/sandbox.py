@@ -123,7 +123,7 @@ class Symbol(object):
         self.ratios = []
 
     def draw(self, dc, color=wx.Colour(0, 0, 0), width=5,
-             fill=wx.Colour(0, 0, 0, 0)):
+             fill=wx.Colour(0, 0, 0)):
 
         dc.SetBrush(wx.Brush(fill))
         dc.SetPen(wx.Pen(color, width))
@@ -135,7 +135,13 @@ class Symbol(object):
                 dc.DrawEllipse(*circle)
 
         for rect in self.rects:
-            dc.DrawRectangle(*rect)
+
+            try:
+                x, y, w, h, r = rect
+            except:
+                x, y, w, h = rect
+
+            dc.DrawRectangle(x, y, w, h)
 
         for rrect in self.rrects:
             dc.DrawRectangle(rrect.x, rrect.y, rrect.w, rrect.h)
@@ -619,6 +625,7 @@ class BlockLabel(SchematicObject):
 
 
 class Block(SchematicObject):
+
     is_block = True
 
     def __init__(self, name, engine=None, is_ground=False,

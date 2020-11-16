@@ -8,12 +8,7 @@ import matplotlib
 import matplotlib.figure
 import matplotlib.backends.backend_agg
 
-import Image  # PIL (Python Image Library)
-import ImageChops  # Image Channel Operations library
-import ImageOps  # Various whole image operations.
-
-from cStringIO import StringIO
-
+from PIL import Image, ImageChops, ImageOps 
 
 # region charmap
 
