@@ -1,18 +1,4 @@
 """Voltage Scope Device.
-
-Copyright 2014 Joe Hood
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
 """
 
 import wx
@@ -22,71 +8,89 @@ import subcircuit.interfaces as inter
 
 
 class VScope(inter.SignalDevice):
+
     def __init__(self, nodes, **parameters):
+
         inter.SignalDevice.__init__(self, nodes, **parameters)
+
         self.time = []
         self.data = []
 
     def connect(self):
+
         npos, nneg = self.nodes
+
         self.port2node = {0: self.get_node_index(npos),
                           1: self.get_node_index(nneg)}
 
     def update(self):
+
         pass
 
     def start(self, dt):
+
         pass
-        # tmax = self.netlist.simulator.tmax
-        # n = tmax / dt
-        # self.time = np.zeros(n)
-        # self.data = np.zeros(n)
 
     def step(self, dt, t):
+
         pass
 
     def post_step(self, dt, t):
+
         v = self.get_across(0, 1)
         self.time.append(t)
         self.data.append(v)
 
 
 class VScope3(inter.SignalDevice):
+
     def __init__(self, nodes, **parameters):
+
         inter.SignalDevice.__init__(self, nodes, **parameters)
+
         self.time = []
         self.data1 = []
         self.data2 = []
         self.data3 = []
 
     def connect(self):
+
         n1, n2, n3, nn = self.nodes
+
         self.port2node = {0: self.get_node_index(n1),
                           1: self.get_node_index(n2),
                           2: self.get_node_index(n3),
                           3: self.get_node_index(nn)}
 
     def update(self):
+
         pass
 
     def start(self, dt):
+
         pass
 
     def step(self, dt, t):
+
         pass
 
     def post_step(self, dt, t):
+
         v1 = self.get_across(0, 3)
         v2 = self.get_across(1, 3)
         v3 = self.get_across(2, 3)
+
         self.time.append(t)
+
         self.data1.append(v1)
         self.data2.append(v2)
         self.data3.append(v3)
 
 
 class VScopeBlock(sb.Block):
+
     """Schematic graphical inteface for V Scope device."""
+
     friendly_name = "Voltage Scope"
     family = "Meters"
     label = "Scope"
@@ -101,8 +105,9 @@ class VScopeBlock(sb.Block):
     symbol.rects.append((12, 12, 136, 96, 1))
 
     def __init__(self, name):
-        # init super:
+
         sb.Block.__init__(self, name, None, is_signal_device=True)
+
         self.size = (160, 120)
         self.margin = 12
 
@@ -120,6 +125,7 @@ class VScopeBlock(sb.Block):
         self.rects.append((window, (sb.SCOPE_FG, sb.SCOPE_FG)))
 
     def end(self):
+
         times = self.engine.time
         values = self.engine.data
 
@@ -132,6 +138,7 @@ class VScopeBlock(sb.Block):
         (w, h), m = self.size, self.margin
 
         if max(times) > 0.0:
+
             tscale = (w - m * 2.0) / max(times)
             toffset = m
 
@@ -156,14 +163,19 @@ class VScopeBlock(sb.Block):
             self.plot_curves.append((plot_curve, sb.SCOPE_CURVE))
 
     def get_engine(self, nodes):
+
         if len(nodes) == 1:
             nodes += [0]  # if only one connection, ground neg lead
+
         self.engine = VScope(nodes)
+
         return self.engine
 
 
 class VScope3Block(sb.Block):
+
     """Schematic graphical inteface for V Scope 3ph device."""
+
     friendly_name = "Voltage Scope (3ph)"
     family = "Meters"
     label = "Scope"
@@ -178,8 +190,9 @@ class VScope3Block(sb.Block):
     symbol.rects.append((12, 12, 136, 96, 1))
 
     def __init__(self, name):
-        # init super:
+
         sb.Block.__init__(self, name, None, is_signal_device=True)
+
         self.size = (160, 120)
         self.margin = 12
 
@@ -199,7 +212,9 @@ class VScope3Block(sb.Block):
         self.rects.append((window, (sb.SCOPE_FG, sb.SCOPE_FG)))
 
     def end(self):
+
         times = self.engine.time
+
         values1 = self.engine.data1
         values2 = self.engine.data2
         values3 = self.engine.data3
@@ -251,12 +266,15 @@ class VScope3Block(sb.Block):
             self.plot_curves.append((plot_curve3, wx.Colour(100, 100, 255)))
 
     def get_engine(self, nodes):
+
         if len(nodes) == 1:
             nodes += [0, 0, 0]
         if len(nodes) == 2:
             nodes += [0, 0]
         if len(nodes) == 3:
             nodes += [0]
+
         self.engine = VScope3(nodes)
+
         return self.engine
 

@@ -25,15 +25,15 @@ from subcircuit.mathutils.pprint import equ2bmp
 
 
 class Sum(inter.SignalDevice):
+
     def __init__(self, nodes, signs=None, **parameters):
+
         inter.SignalDevice.__init__(self, nodes, **parameters)
 
         if not signs:
             self.signs = [1, 1, -1]
         else:
             self.signs = signs
-
-        self.sign1, self.sign2, self.sign3 = self.signs
 
     def connect(self):
         if len(self.nodes) == 4:
@@ -50,10 +50,15 @@ class Sum(inter.SignalDevice):
         pass
 
     def step(self, dt, t):
+
+        sign1, sign2, sign3 = self.signs
+
         in1 = self.get_port_value(1)
         in2 = self.get_port_value(2)
         in3 = self.get_port_value(3)
-        output = in1 * self.sign1 + in2 * self.sign2 + in3 * self.sign3
+
+        output = in1 * sign1 + in2 * sign2 + in3 * sign3
+
         self.set_port_value(0, output)
 
     def post_step(self, dt, t):
@@ -61,21 +66,29 @@ class Sum(inter.SignalDevice):
 
 
 class SumNode(sb.Block):
+
     """Schematic graphical interface for Sum device."""
+
     friendly_name = "Sum Node"
     family = "Signal Sources"
     label = "S"
     engine = Sum
 
     symbol = sb.Symbol()
-
     symbol.circles.append((60, 60, 20))
 
-    symbol.add_field(u"\u03a3", (60, 62), 25, sb.Alignment.CENTER)
+    symbol.add_field(u"\u03a3", (60, 60), 25, sb.Alignment.CENTER)
+
+    symbol.add_field(u"+", (45, 35), 18, sb.Alignment.CENTER, visible=False)
+    
+    symbol.add_field(u"+", (30, 50), 18, sb.Alignment.CENTER, visible=False)
+    
+    symbol.add_field(u"+", (45, 85), 18, sb.Alignment.CENTER, visible=False)
 
     def __init__(self, name):
 
-        sb.Block.__init__(self, name, None, is_signal_device=True)
+        sb.Block.__init__(self, name, None, is_signal_device=True,
+                          label_visible=False)
 
         self.ports["output"] = sb.Port(self, 0, (80, 60),
                                        sb.PortDirection.OUT,
@@ -93,7 +106,6 @@ class SumNode(sb.Block):
                                        sb.PortDirection.IN,
                                        block_edge=sb.Alignment.S)
 
-
         self.properties["Signs"] = "1 1 -1"
 
         self.signs = [1, 1, -1]
@@ -102,6 +114,40 @@ class SumNode(sb.Block):
 
         self.signs = [float(x) for x in self.properties["Signs"].split(" ")]
 
+        sign1, sign2, sign3 = self.signs
+
+        if self.ports["input1"].connected:
+            self.fields[1].visible = True
+            if sign1 == 1:
+                self.fields[1].text = "+"
+            elif sign1 == -1:
+                self.fields[1].text = "_"
+            else:
+                self.fields[1].text = "?"
+        else:
+            self.fields[1].visible = False
+
+        if self.ports["input2"].connected:
+            self.fields[2].visible = True
+            if sign2 == 1:
+                self.fields[2].text = "+"
+            elif sign2 == -1:
+                self.fields[2].text = "_"
+            else:
+                self.fields[2].text = "?"
+        else:
+            self.fields[2].visible = False
+
+        if self.ports["input3"].connected:
+            self.fields[3].visible = True
+            if sign3 == 1:
+                self.fields[3].text = "+"
+            elif sign3 == -1:
+                self.fields[3].text = "_"
+            else:
+                self.fields[3].text = "?"
+        else:
+            self.fields[3].visible = False
 
     def end(self):
         pass

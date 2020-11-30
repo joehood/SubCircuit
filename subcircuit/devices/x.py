@@ -22,7 +22,7 @@ import sys
 
 
 #  Suncircuit instance device needs access to all other devices:
-load_engines_to_module(sys.modules[__name__])
+load_engines_to_module(sys.modules[__name__], "devices")
 
 
 class X(inter.MNADevice):
@@ -97,6 +97,6 @@ class XBlock2Port(sb.Block):
                     device = eval(devicedef, globals(), locals())
                     subckt.device(devicedef, device)
                 except Exception as e:
-                    print(e.message)
+                    print(str(e))
 
         return X(nodes, self.properties['Subckt Name'])

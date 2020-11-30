@@ -1,36 +1,32 @@
 """Subcircuit interface for schematic development and simulation control.
-
-Copyright 2014 Joe Hood
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
 """
 
-from __future__ import print_function, division
+CARIO = False
+
 import pickle
 import os
 import sys
 import math
 import bdb
-from copy import deepcopy as clone
+from copy import deepcopy
 from collections import OrderedDict as ODict
 
 import wx
 import wx.aui as aui
 import wx.stc as stc
+
 from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
 from matplotlib.figure import Figure
+
 from wx.py.editwindow import EditWindow as PyEdit
 from wx.py.shell import Shell as PyShell
+
+wxlg = None
+if CARIO:
+    try:
+        import wx.lib.graphics as wxlg
+    except:
+        pass
 
 import subcircuit.netlist as net
 import subcircuit.interfaces as inter
@@ -38,10 +34,13 @@ import subcircuit.sandbox as sb
 import subcircuit.gui as gui
 import subcircuit.loader as load
 import subcircuit.model.param as param
+
 from subcircuit.mathutils.pprint import equ2bmp
 
 
 # region CONSTANTS
+
+DARKMODE = True
 
 ICONFILE = "subcircuit.ico"
 DEF_SCHEM_NAME = "cir{0}"
@@ -55,6 +54,10 @@ DEF_SIM_SETTINGS["voltages"] = ""
 DEF_SIM_SETTINGS["currents"] = ""
 
 DEF_DEVICE = "Resistor"
+
+DRAW_PORTS = True
+DRAW_HANDLES = True
+AUTO_CONNECT = True
 
 # endregion
 
@@ -73,86 +76,105 @@ is_windows = True
 #region Classes
 
 class Debugger(bdb.Bdb):
+
     def __init__(self):
+
         bdb.Bdb.__init__(self)
 
-        def user_line(self, frame):
-            self.interaction(frame)
+    def user_line(self, frame):
 
-        def user_exception(self, frame, info):
-            self.interaction(frame, info)
+        self.interaction(frame)
 
-        def interaction(self, frame, info=None):
-            code, lineno = frame.f_code, frame.f_lineno
-            filename = code.co_filename
-            basename = os.path.basename(filename)
-            message = "%s:%s" % (basename, lineno)
-            if code.co_name != "?":
-                message = "%s: %s()" % (message, code.co_name)
-            print(message)
-            # sync_source_line()
-            if frame and filename[:1] + filename[-1:] != "<>" and os.path.exists(filename):
-                if self.gui:
-                    # we may be in other thread (i.e. debugging web2py)
-                    # wx.PostEvent(self.gui, DebugEvent(filename, lineno))
-                    pass
+    def user_exception(self, frame, info):
 
-            # wait user events:
-            self.waiting = True
-            self.frame = frame
-            try:
-                while self.waiting:
-                    wx.YieldIfNeeded()
-            finally:
-                self.waiting = False
-            self.frame = None
+        self.interaction(frame, info)
+
+    def interaction(self, frame, info=None):
+
+        code, lineno = frame.f_code, frame.f_lineno
+        filename = code.co_filename
+        basename = os.path.basename(filename)
+        message = "%s:%s" % (basename, lineno)
+
+        if code.co_name != "?":
+            message = "%s: %s()" % (message, code.co_name)
+
+        print(message)
+        
+        if frame and filename[:1] + filename[-1:] != "<>" and os.path.exists(filename):
+            if self.gui:
+                pass
+
+        self.waiting = True
+        self.frame = frame
+
+        try:
+            while self.waiting:
+                wx.YieldIfNeeded()
+        finally:
+            self.waiting = False
+
+        self.frame = None
 
 
 class ScriptEditor(PyEdit):
+
     """Subcircuit Editor"""
 
     def __init__(self, parent, id, script):
+
         """Create a new Subcircuit editor window.
         Adds to parent, and load script."""
+
         PyEdit.__init__(self, parent, id)
+
+        self.SetBackgroundColour(sb.BG_COLOR)
+        self.SetForegroundColour(sb.FG_COLOR)
+
         if script:
             self.AddText(open(script).read())
+
         self.setDisplayLineNumbers(True)
 
 
 class Interactive(PyShell):
+
     """Subcircuit interactive window."""
 
     def __init__(self, parent, id, debugger):
-        """ """
+
         PyShell.__init__(self, parent, id)
+
         self.debugger = debugger
 
-    def debug(self, code, wrkdir):
-        """ """
-        # save sys.stdout
-        oldsfd = sys.stdin, sys.stdout, sys.stderr
-        try:
-            # redirect standard streams
-            sys.stdin, sys.stdout, sys.stderr = self.interp.stdin, self.interp.stdout, self.interp.stderr
+        self.SetBackgroundColour(sb.BG_COLOR)
+        self.SetForegroundColour(sb.FG_COLOR)
 
+    def debug(self, code, wrkdir):
+
+        oldsfd = sys.stdin, sys.stdout, sys.stderr
+
+        try:
+            sys.stdin = self.interp.stdin
+            sys.stdout = self.interp.stdout
+            sys.stderr = self.interp.stderr
+            
             sys.path.insert(0, wrkdir)
 
-            # update the interpreter window:
             self.write('\n')
-
             self.debugger.run(code, locals=self.interp.locals)
-
             self.prompt()
 
         finally:
-            # set the title back to normal
             sys.stdin, sys.stdout, sys.stderr = oldsfd
 
 
 class PlotPanel(wx.Panel):
+
     def __init__(self, parent):
+
         wx.Panel.__init__(self, parent)
+
         self.figure = Figure()
         self.axes = self.figure.add_subplot(111)
         self.canvas = FigureCanvas(self, -1, self.figure)
@@ -161,17 +183,25 @@ class PlotPanel(wx.Panel):
         self.SetSizer(self.sizer)
         self.Fit()
 
+        self.SetBackgroundColour(sb.BG_COLOR)
+        self.SetForegroundColour(sb.FG_COLOR)
+
     def draw(self):
+
         for curve in self.curves:
+
             xdata, ydata, label = curve
             self.axes.plot(xdata, ydata)
 
     def set_data(self, curves):
+
         self.curves = curves
 
 
 class PropertyGetter(gui.PropertyDialog):
+
     def __init__(self, parent, caption, properties, size=(300, 300)):
+
         self.armed = False
         gui.PropertyDialog.__init__(self, parent)
 
@@ -181,12 +211,14 @@ class PropertyGetter(gui.PropertyDialog):
         self.properties = properties
         self.n = len(self.properties)
         self.propgrid.InsertRows(0, self.n)
+
         for i, (name, value) in enumerate(self.properties.items()):
             type_ = type(value)
             self.types.append(type_)
             self.keys.append(name)
             self.propgrid.SetCellValue(i, 0, str(value))
             self.propgrid.SetRowLabelValue(i, str(name))
+
         self.armed = True
         self.szr_main.Fit(self)
         self.Layout()
@@ -196,8 +228,12 @@ class PropertyGetter(gui.PropertyDialog):
 
         self.result = wx.ID_CANCEL
 
+        self.SetBackgroundColour(sb.BG_COLOR)
+        self.SetForegroundColour(sb.FG_COLOR)
+
     @classmethod
     def update_properties(cls, parent, caption, properties):
+
         propdlg = PropertyGetter(parent, caption, properties)
 
         if propdlg.ShowModal() == wx.ID_OK:
@@ -209,10 +245,12 @@ class PropertyGetter(gui.PropertyDialog):
         return properties
 
     def on_kill_focus(self, event):
+
         # Cell editor's grandparent, the grid GridWindow's parent, is the grid.
         self.propgrid.SaveEditControlValue()
 
     def update(self):
+
         if self.armed:
             for i in range(self.n):
                 type_ = self.types[i]
@@ -224,16 +262,20 @@ class PropertyGetter(gui.PropertyDialog):
                     pass
 
     def on_grid_update(self, event):
+
         self.update()
 
     def OnClose(self, event):
+
         self.update()
         self.result = wx.ID_OK
         self.Destroy()
 
 
 class BlockDropTarget(wx.TextDropTarget):
+
     def __init__(self, parent):
+
         wx.TextDropTarget.__init__(self)
         self.schematic_window = parent
 
@@ -256,7 +298,13 @@ class BlockDropTarget(wx.TextDropTarget):
 
 class SchematicWindow(wx.Panel):
 
+    """Interactive schematic editor window.
+    """
+
     def __init__(self, parent, schematic=None, name=""):
+
+        # init super:
+        wx.Panel.__init__(self, parent)
 
         self.parent = parent
 
@@ -265,27 +313,30 @@ class SchematicWindow(wx.Panel):
         if schematic:
             self.schematic = schematic
         else:
+            # no schematic provided. Create new:
             self.schematic = sb.Schematic("Cir1")
             self.schematic.sim_settings = DEF_SIM_SETTINGS
 
         if name:
             self.schematic.name = name
 
+        # transfer properties from schematic to window:
+
         self.name = schematic.name
         self.blocks = schematic.blocks
         self.connectors = schematic.connectors
         self.sim_settings = schematic.sim_settings
 
-        # init super:
-        wx.Panel.__init__(self, parent)
-
         # set drop target so blocks can be dropped:
+
         self.SetDropTarget(BlockDropTarget(self))
 
         # must do this for double buffering:
+
         self.SetBackgroundColour(sb.BG_COLOR)
 
-        # bindings:
+        # event bindings:
+
         self.Bind(wx.EVT_PAINT, self.on_paint)
         self.Bind(wx.EVT_LEFT_DOWN, self.on_left_down)
         self.Bind(wx.EVT_MOTION, self.on_motion)
@@ -296,19 +347,22 @@ class SchematicWindow(wx.Panel):
         self.Bind(wx.EVT_LEFT_DCLICK, self.on_dclick)
         self.Bind(wx.EVT_SIZE, self.on_size)
 
-        # schemetic affine matrix state:
+        # reset schemetic affine matrix state:
+
         self.scale = 1.0
         self.rotation = 0.0
         self.translation = (0.0, 0.0)
 
-        # during schematic/object drag. Note that this is reset after the
-        # drag operation is complete.
+        # these are for keeping up with positions while dragging.
+        # Note that these is reset after the drag operation is complete.
+
         self.drag_translation = (0.0, 0.0)
         self.last_position = (0.0, 0.0)
         self.current_position = (0.0, 0.0)
         self.last_mouse_position = (0.0, 0.0)
 
-        # for some reason mac needs higher mouse scroll (zoom) sensitivity
+        # mac needs higher mouse scroll (zoom) sensitivity:
+
         if is_windows:
             self.scroll_sensitivity = 0.001
         else:
@@ -326,7 +380,6 @@ class SchematicWindow(wx.Panel):
         self.pen_hover.Cap = wx.CAP_ROUND
         self.pen_select.Cap = wx.CAP_ROUND
 
-        # drawing:
         if is_windows:
             self.SetDoubleBuffered(True)
         else:
@@ -335,6 +388,7 @@ class SchematicWindow(wx.Panel):
             pass
 
         # state:
+
         self.netlist = None
         self.selected_objects = []
         self.active_handle = None
@@ -354,32 +408,36 @@ class SchematicWindow(wx.Panel):
         self.hover_objects = []
         self.ghost_knee_segment = None
 
-        # arm the schematic:
-        self.mode = sb.Mode.STANDBY
-
         self.deselect_all(clean=True)
-
-        self.netlist = None
-
-        #if defined(__WXGTK__)
-
         self.SetCursor(wx.CROSS_CURSOR)
 
+        self.netlist = None
+        self.grid = True
+
+        # finally arm the schematic (should be the last action in init function):
+
+        self.mode = sb.Mode.STANDBY
+
     def on_size(self, event):
+
         pass
 
     def on_dclick(self, event):
+
+        """Handle double-click event.
+        """
+
         x, y = self.logical_position(event.x, event.y)
         self.update_hit_objects((x, y))
 
         if self.hit_labels:
+
             label = self.hit_labels[0]
             old = label.properties['text']
 
-            properties = PropertyGetter.update_properties(self,
-                                                          'Label',
-                                                          label.properties)
+            properties = PropertyGetter.update_properties(self, 'Label', label.properties)
             new = properties['text']
+
             if not old == new:
                 if new in self.blocks:
                     label.properties['text'] = old
@@ -388,13 +446,16 @@ class SchematicWindow(wx.Panel):
                     self.blocks[new].name = new
 
         elif self.hit_blocks:
+
             block = self.hit_blocks[0]
             label = "Properties for {0}".format(str(block))
             PropertyGetter.update_properties(self, label, block.properties)
             block.design_update()
 
     def select_object(self, obj):
+
         obj.selected = True
+
         if not obj in self.selected_objects:
             self.selected_objects.append(obj)
 
@@ -403,6 +464,7 @@ class SchematicWindow(wx.Panel):
             self.selected_objects.append(obj.connector)
 
     def deselect_object(self, obj):
+
         obj.selected = False
         if obj in self.selected_objects:
             self.selected_objects.remove(obj)
@@ -436,25 +498,37 @@ class SchematicWindow(wx.Panel):
 
         self.active_connector = None
 
+        for block in self.blocks.values():
+            block.design_update()
+
     def remove_hover_all(self):
+
         for obj in self.hover_objects:
             obj.hover = False
         self.hover_objects = []
 
     def set_hover(self, obj):
+
         obj.hover = True
         if not obj in self.hover_objects:
             self.hover_objects.append(obj)
 
     def clean_up(self):
-        # clean up temporary objs after clicks are processed:
+
+        """Cleans up temporary objs after clicks are processed.
+        """
+
         for connector in self.connectors:
             for seg in connector.segments:
                 seg.ghost_knee = None
 
     def on_left_up(self, event):
 
+        """Handle left click finished.
+        """
+
         # get updated position:
+
         pt = self.logical_position(event.x, event.y)
         spt = pt
         if sb.SNAP_TO_GRID:
@@ -508,6 +582,9 @@ class SchematicWindow(wx.Panel):
         self.Refresh()
 
     def on_left_down(self, event):
+
+        """Handle left click started.
+        """
 
         # get updated position:
         pt = self.logical_position(event.x, event.y)
@@ -639,6 +716,7 @@ class SchematicWindow(wx.Panel):
         self.Refresh()
 
     def on_motion(self, event):
+
         """
         1st: get position and snapped position
 
@@ -699,6 +777,7 @@ class SchematicWindow(wx.Panel):
                                 self.ghost_knee_segment = seg
 
             elif self.ghost_knee_segment:
+
                 self.ghost_knee_segment.ghost_knee = None
                 self.ghost_knee_segment = None
 
@@ -723,7 +802,7 @@ class SchematicWindow(wx.Panel):
                 if self.selected_objects:
                     self.drag_selection((event.x, event.y))
                 else:
-                     self.drag_schemetic((event.x, event.y))
+                    self.drag_schemetic((event.x, event.y))
 
             elif self.top_obj:
                 self.set_hover(self.top_obj)
@@ -733,6 +812,7 @@ class SchematicWindow(wx.Panel):
         self.Refresh()
 
     def drag_schemetic(self, new_point):
+
         x, y = new_point
         x0, y0 = self.last_mouse_position
         dx, dy = (x - x0), (y - y0)
@@ -740,6 +820,7 @@ class SchematicWindow(wx.Panel):
         self.translation = (xtrans + dx, ytrans + dy)
 
     def drag_selection(self, new_point):
+
         x, y = new_point
         x0, y0 = self.last_mouse_position
         dx = (x - x0) / self.scale
@@ -749,12 +830,15 @@ class SchematicWindow(wx.Panel):
             if isinstance(obj, sb.Connector):
                 for knee in obj.knees:
                     knee.translate((dx, dy))
-        #self.auto_connect()
+
+        if AUTO_CONNECT: self.auto_connect()
 
     def move_selection_by(self, delta):
+
         for obj in self.selected_objects:
             obj.translate(delta)
-        #self.auto_connect()
+
+        if AUTO_CONNECT: self.auto_connect()
 
     def zoom(self, delta, center):
 
@@ -779,6 +863,7 @@ class SchematicWindow(wx.Panel):
             self.Refresh()
 
     def on_scroll(self, event):
+
         delta = event.GetWheelRotation() * self.scroll_sensitivity
         self.zoom(delta, (event.x, event.y))
 
@@ -821,6 +906,9 @@ class SchematicWindow(wx.Panel):
 
             self.deselect_all()
 
+            for block in self.blocks.values():
+                block.design_update()
+
         # navigation:
 
         elif code == wx.WXK_UP or code == wx.WXK_NUMPAD_UP:
@@ -836,6 +924,7 @@ class SchematicWindow(wx.Panel):
             self.move_selection_by((sb.MOVE_DELTA, 0))
 
         # rotate:
+
         elif code == ord('R'):
             if self.mode == sb.Mode.ADD_BLOCK:
                 self.ghost.rotate(90)
@@ -845,6 +934,7 @@ class SchematicWindow(wx.Panel):
                         obj.rotate(90)
 
         # flip horizontal:
+
         elif code == ord('H'):
             if self.mode == sb.Mode.ADD_BLOCK:
                 self.ghost.flip_horizontal()
@@ -854,6 +944,7 @@ class SchematicWindow(wx.Panel):
                         obj.flip_horizontal()
 
         # flip vertical:
+
         elif code == ord('V'):
             if self.mode == sb.Mode.ADD_BLOCK:
                 self.ghost.flip_vertical()
@@ -865,6 +956,7 @@ class SchematicWindow(wx.Panel):
         self.Refresh()
 
     def on_paint(self, event):
+
         self.dc = wx.PaintDC(self)
         self.draw(self.dc)
 
@@ -883,7 +975,9 @@ class SchematicWindow(wx.Panel):
         hit_knees = {}
 
         # determine everything that's hit:
+
         for block in self.blocks.values():
+
             if block.hittest(pt):
                 hit_blocks[block.zorder] = block
             for port in block.ports.values():
@@ -896,7 +990,9 @@ class SchematicWindow(wx.Panel):
                 for handle in rrect.handles.values():
                     if handle.hittest(pt):
                         hit_handles[handle.zorder] = handle
+
         for connector in self.connectors:
+
             for segment in connector.segments:
                 if segment.hittest(pt):
                     hit_segments[segment.zorder] = segment
@@ -925,7 +1021,7 @@ class SchematicWindow(wx.Panel):
         self.hit_knees = [obj for (z, obj) in
                           reversed(sorted(hit_knees.items()))]
 
-        # the order these lists are added is key:
+        # the order these lists are added is important:   (<-- how?)
 
         self.hit_objects = (self.hit_labels +
                             self.hit_ports +
@@ -940,6 +1036,7 @@ class SchematicWindow(wx.Panel):
             self.top_obj = self.hit_objects[0]
 
     def logical_position(self, xmouse, ymouse):
+
         dx, dy = self.translation
         xschem = (xmouse - dx) / self.scale
         yschem = (ymouse - dy) / self.scale
@@ -947,6 +1044,7 @@ class SchematicWindow(wx.Panel):
         return logical_position
 
     def add_block(self, key, block, position):
+
         self.blocks[key] = block
         self.blocks[key].position = position
 
@@ -956,6 +1054,7 @@ class SchematicWindow(wx.Panel):
             obj.selected = False
 
         if clean:
+
             for block in self.blocks.values():
                 block.selected = False
                 for port in block.ports.values():
@@ -994,7 +1093,8 @@ class SchematicWindow(wx.Panel):
                 i += 1
                 key = "{0}{1}".format(name, i)
 
-        # great the instance as the "ghost" to be placed on the schematic:
+        # create the instance as the "ghost" to be placed on the schematic:
+
         self.ghost = cls(key)
 
         self.mode = sb.Mode.ADD_BLOCK
@@ -1005,41 +1105,49 @@ class SchematicWindow(wx.Panel):
 
     @staticmethod
     def get_bounding(path):
-        rect = path.GetBox()
-        x, y = rect.GetLeftTop()
-        w, h = rect.GetSize()
-        bounding = (x, y, w, h)
-        center = rect.GetCentre()
+
+        bounding = path.GetBox()
+        x, y, w, h = bounding
+        center = x+w*0.5, y+h*0.5
         return bounding, center
 
     @staticmethod
     def snap(position):
+
         if position:
+
             x, y = position
             dx = x % sb.GRID_MINOR
             dy = y % sb.GRID_MINOR
-            if dx > sb.GRID_MINOR / 2:
+
+            if dx > sb.GRID_MINOR * 0.5:
                 x += sb.GRID_MINOR - dx
             else:
                 x -= dx
-            if dy > sb.GRID_MINOR / 2:
+
+            if dy > sb.GRID_MINOR * 0.5:
                 y += sb.GRID_MINOR - dy
             else:
                 y -= dy
+
             return x, y
+
         else:
             return None
 
     def consolidate_connection_points(self):
+
+        # todo.
         pass
 
     def auto_connect(self):
-        tol = sb.GRID_MINOR / 2
 
         # auto connect port to port:
 
         portmap = {}
+
         for block in self.blocks.values():
+
             for port in block.ports.values():
                 x, y = port.center
                 if (x, y) in portmap:
@@ -1048,6 +1156,7 @@ class SchematicWindow(wx.Panel):
                     portmap[(x, y)] = [port]
 
         for pt, ports in portmap.items():
+
             if len(ports) == 2:
                 p1, p2 = ports
                 connected = False
@@ -1059,44 +1168,13 @@ class SchematicWindow(wx.Panel):
                     if connected:
                         break
                 if not connected:
-                    self.add_auto_connector(p1, p2)
-
-        # auto connect port to connector:
-
-        for block in self.blocks.values():
-            for port in block.ports.values():
-                pass
+                    self.start_connector(p1)
+                    self.end_connector(p2)
 
     def add_connector(self, connector):
+
         if not connector in self.connectors:
             self.connectors.append(connector)
-
-    def add_auto_connector(self, connection1, connection2):
-
-        pt1 = connection1.center
-        connector = sb.Connector(pt1)
-        self.add_connector(connector)
-        connection1.add_connector(connector)
-        connector.start_connection_point = connection1
-
-        if isinstance(connection1, sb.Port):
-            connector.add_port(connection1)
-        elif isinstance(connection1, sb.KneePoint):
-            connector.add_knee(connection1)
-
-        connection2.add_connector(connector)
-        end = connection2.center
-
-        if isinstance(connection2, sb.Port):
-            connector.add_port(connection2)
-        elif isinstance(connection2, sb.KneePoint):
-            connector.add_knee(connection2)
-
-        connector.end_connection_point = connection2
-        connector.end = end
-
-        connection1.add_connector(connector)
-        connection2.add_connector(connector)
 
     def draw(self, dc):
 
@@ -1105,7 +1183,14 @@ class SchematicWindow(wx.Panel):
 
         # create a graphics context from the drawing context this will help
         # us automatically manage scaling, translation and rotation:
-        gc = wx.GraphicsContext.Create(self.dc)
+
+        if wxlg:
+            gc = wxlg.GraphicsContext.Create(self.dc)
+            gc.SetAntialiasMode(wxlg.ANTIALIAS_GRAY)
+        else:
+            gc = wx.GraphicsContext.Create(self.dc)
+            gc.SetInterpolationQuality(wx.INTERPOLATION_BEST)
+            gc.SetAntialiasMode(wx.ANTIALIAS_DEFAULT)
 
         # translate gc:
         gc.Translate(*self.translation)
@@ -1117,10 +1202,12 @@ class SchematicWindow(wx.Panel):
         gc.Rotate(self.rotation)
 
         # render grid:
-        self.draw_grid(gc)
+        if self.grid: self.draw_grid(gc)
 
         # shows position of the mouse as seen by the gc (for debugging):
+
         if sb.SHOW_MOUSE_POSITION:
+
             path = gc.CreatePath()
             path.AddCircle(x, y, 5)
             gc.SetBrush(wx.Brush(wx.Colour(100, 200, 100)))
@@ -1134,17 +1221,16 @@ class SchematicWindow(wx.Panel):
         for connector in self.connectors:
             self.draw_connector(connector, gc)
 
-        # TODO: render primatives and drawings
-
-
         # this routine will render the hit boxes, either for all hit objects
-        # or just the top hit object (for debugging)
+        # or just the top hit object. All mode is for debugging
 
         ALL_OBJECTS = False
         TOP_OBJECT = True
 
         if ALL_OBJECTS:
+
             icolor = 0
+
             colors = [wx.Colour(200, 100, 100),
                       wx.Colour(100, 200, 100),
                       wx.Colour(100, 100, 200),
@@ -1153,27 +1239,38 @@ class SchematicWindow(wx.Panel):
                       wx.Colour(50, 50, 150)]
 
             line_width = 2
+
             for obj in self.hit_objects:
+
                 path = gc.CreatePath()
+
                 for rect in obj.bounding_rects:
                     x, y, w, h = rect
-                    path.AddRoundedRectangle(x, y, w, h, 2)
+                    #path.AddRoundedRectangle(x, y, w, h, 2)
+                    path.AddRectangle(x, y, w, h)
+
                 gc.SetPen(wx.Pen(colors[icolor], line_width))
                 gc.StrokePath(path)
                 icolor += 1
                 icolor = min(icolor, len(colors)-1)
 
         elif TOP_OBJECT:
+
             if self.top_obj:
+
                 path = gc.CreatePath()
+
                 for rect in self.top_obj.bounding_rects:
                     if not rect == (0, 0, 0, 0):
                         x, y, w, h = rect
-                        path.AddRoundedRectangle(x, y, w, h, 2)
+                        #path.AddRoundedRectangle(x, y, w, h, 2)
+                        path.AddRectangle(x, y, w, h)
+
                 gc.SetPen(wx.Pen(wx.Colour(200, 100, 100), 2))
                 gc.StrokePath(path)
 
     def draw_grid(self, gc):
+
         spacing = sb.GRID_MINOR
         w, h = gc.GetSize()
         dx, dy = self.translation
@@ -1193,6 +1290,7 @@ class SchematicWindow(wx.Panel):
         path = gc.CreatePath()
 
         path.MoveToPoint(x0, y0 - h)
+
         while x <= (w - x0):
             path.AddLineToPoint(x, h - y0)
             x += spacing
@@ -1200,12 +1298,14 @@ class SchematicWindow(wx.Panel):
 
         x = x0
         path.MoveToPoint(x0, y0 - h)
+
         while x >= -(w - x0):
             path.AddLineToPoint(x, h - y0)
             x -= spacing
             path.MoveToPoint(x, y0 - h)
 
         path.MoveToPoint(x0 - w, y0)
+
         while y <= (h - y0):
             path.AddLineToPoint(w - x0, y)
             y += spacing
@@ -1213,6 +1313,7 @@ class SchematicWindow(wx.Panel):
 
         y = y0
         path.MoveToPoint(x0 - w, y0)
+
         while y >= -(h - y0):
             path.AddLineToPoint(w - x0, y)
             y -= spacing
@@ -1245,22 +1346,21 @@ class SchematicWindow(wx.Panel):
 
         x, y = self.snap(block.position)
         rad = block.rotation * 0.0174532925
+
         matrix = gc.CreateMatrix()
+
         matrix.Translate(x, y)
         matrix.Rotate(rad)
 
-        if block.hor_flip:
-            matrix.Scale(-1.0, 1.0)
-
-        if block.ver_flip:
-            matrix.Scale(1.0, -1.0)
+        if block.hor_flip: matrix.Scale(-1.0, 1.0)
+        if block.ver_flip: matrix.Scale(1.0, -1.0)
 
         # main symbol path:
 
         path = gc.CreatePath()
 
         for line in block.lines:
-            path.MoveToPoint(line[0])
+            path.MoveToPoint(*line[0])
             for point in line[1:]:
                 x2, y2 = point
                 path.AddLineToPoint(x2, y2)
@@ -1268,26 +1368,30 @@ class SchematicWindow(wx.Panel):
         hd_rects = []
 
         for rect in block.rects:
+
             if len(rect) == 2:
                 hd_rects.append(rect)
             else:
-                path.AddRoundedRectangle(*rect)
+                #path.AddRoundedRectangle(*rect)
+                path.AddRectangle(*rect[:4])
 
         for rrect in block.rrects:
+
             path.AddRectangle(rrect.x, rrect.y, rrect.w, rrect.h)
 
         for circle in block.circles:
+
             if len(circle) == 3:
                 path.AddCircle(*circle)
             elif len(circle) == 4:
                 path.AddEllipse(*circle)
-
+                                                                   
         for arc in block.arcs:
 
             x, y, r, ang1, ang2, clockwise = arc
             x0 = x + r * math.cos(ang1)
             y0 = y + r * math.sin(ang1)
-            path.MoveToPoint((x0, y0))
+            path.MoveToPoint(x0, y0)
             path.AddArc(x, y, r, ang1, ang2, clockwise)
 
         path.Transform(matrix)
@@ -1298,31 +1402,43 @@ class SchematicWindow(wx.Panel):
         # end main symbol path
 
         for rect, (stroke, fill) in hd_rects:
+
             path = gc.CreatePath()
-            path.AddRoundedRectangle(*rect)
+            #path.AddRoundedRectangle(*rect)
+            path.AddRectangle(*rect[:4])
             path.Transform(matrix)
+
             if fill:
                 gc.SetBrush(wx.Brush(fill))
                 gc.FillPath(path)
+
             if stroke:
                 gc.SetPen(wx.Pen(stroke, 1))
                 gc.StrokePath(path)
 
         for plot_curve in block.plot_curves:
+
             curve, color = plot_curve
+
             if not color:
                 color = sb.DEVICE_COLOR
+
             pen = wx.Pen(color, 1)
             path = gc.CreatePath()
             gc.SetPen(pen)
-            path.MoveToPoint(curve[0])
+            path.MoveToPoint(*curve[0])
+
             for point in curve[1:]:
                 x2, y2 = point
                 path.AddLineToPoint(x2, y2)
+
             path.Transform(matrix)
             gc.StrokePath(path)
 
         for key, label in block.labels.items():
+
+            if not label.get_visible():
+                continue
 
             if block.is_ghost:
                 gf = gc.CreateFont(font, sb.GHOST_COLOR)
@@ -1341,8 +1457,11 @@ class SchematicWindow(wx.Panel):
             x, y, w, h = block.bounding_rects[0]
             xo, yo = label.position
             xt, yt = x + xo, y + yo
+
             gc.DrawText(label.get_text(), xt, yt)
+
             w, h, d, e = gc.GetFullTextExtent(label.get_text())
+
             label.bounding_rects[0] = (xt, yt, w, h)
             label.center = (xt + w * 0.5, yt + h * 0.5)
 
@@ -1351,50 +1470,60 @@ class SchematicWindow(wx.Panel):
             force_show = False
 
             if block.is_ghost:
+
                 gc.SetPen(self.pen_ghost)
                 gc.SetBrush(self.brush_ghost)
                 gf = gc.CreateFont(font, sb.GHOST_COLOR)
                 force_show = True
 
             elif block.selected:
+
                 gc.SetPen(self.pen_select)
                 gc.SetBrush(self.brush_select)
                 gf = gc.CreateFont(font, sb.SELECT_COLOR)
                 force_show = True
 
             elif port.selected:
+
                 gc.SetPen(self.pen_select)
                 gc.SetBrush(self.brush_select)
                 gf = gc.CreateFont(font, sb.DEVICE_COLOR)
                 force_show = True
 
             elif port.hover:
+
                 gc.SetPen(self.pen_hover)
                 gc.SetBrush(self.brush_hover)
                 gf = gc.CreateFont(font, sb.HOVER_COLOR)
                 force_show = True
 
             elif block.hover:
+
                 gc.SetPen(self.pen_hover)
                 gc.SetBrush(self.brush_hover)
                 gf = gc.CreateFont(font, sb.HOVER_COLOR)
                 force_show = True
 
             else:
+
                 gc.SetPen(self.pen)
                 gc.SetBrush(self.brush)
                 gf = gc.CreateFont(font, sb.DEVICE_COLOR)
                 force_show = False
 
             for connector in port.connectors:
+
                 for seg in connector.segments:
+
                     if seg.selected:
+
                         gc.SetPen(self.pen_select)
                         gc.SetBrush(self.brush_select)
                         gf = gc.CreateFont(font, sb.SELECT_COLOR)
                         force_show = True
 
                     elif seg.hover:
+
                         gc.SetPen(self.pen_hover)
                         gc.SetBrush(self.brush_hover)
                         gf = gc.CreateFont(font, sb.HOVER_COLOR)
@@ -1405,6 +1534,7 @@ class SchematicWindow(wx.Panel):
             (x, y), r, m = port.position, port.radius, port.hit_margin
 
             if port.anchored_rect:
+
                 rect = port.anchored_rect
                 xr0, yr0, wr0, hr0 = rect.x0, rect.y0, rect.w0, rect.h0
                 xr, yr, wr, hr = rect.x, rect.y, rect.w, rect.h
@@ -1456,7 +1586,6 @@ class SchematicWindow(wx.Panel):
                 elif port.block_edge == sb.Alignment.S:
                     arrow_rotation = -sb.PI_OVER_TWO
 
-
             if port.direction in (sb.PortDirection.IN, sb.PortDirection.OUT):
 
                 arrow_angle = sb.PI_OVER_FOUR
@@ -1474,25 +1603,22 @@ class SchematicWindow(wx.Panel):
                 path.AddLineToPoint(x, y)
                 path.AddLineToPoint(x1, y1)
 
-            # transform this path to the blocks affine matrix:
             path.Transform(matrix)
 
             if len(port.connectors) > 1 or force_show:
 
-                if (port.direction == sb.PortDirection.IN
-                   or port.direction == sb.PortDirection.OUT):
-                    gc.StrokePath(path)
+                if port.direction in (sb.PortDirection.IN, sb.PortDirection.OUT):
+                    if DRAW_PORTS: gc.StrokePath(path)
                 else:
-                    gc.FillPath(path)
-
-            path.Destroy()
+                    if DRAW_PORTS: gc.FillPath(path)
 
             path = gc.CreatePath()
+            
             path.MoveToPoint(x, y)
             path.AddRectangle(x - r - m, y - r - m, (r + m) * 2, (r + m) * 2)
             path.Transform(matrix)
+            
             port.bounding_rects[0], port.center = self.get_bounding(path)
-            path.Destroy()
 
         for rrect in block.rrects:
 
@@ -1544,9 +1670,9 @@ class SchematicWindow(wx.Panel):
 
                 if force_show:
                     # gc.StrokePath(path)
-                    gc.FillPath(path)
+                    if DRAW_HANDLES: gc.FillPath(path)
 
-                path.Destroy()
+                #path.Destroy()
 
                 # create hit-testing box:
 
@@ -1557,9 +1683,11 @@ class SchematicWindow(wx.Panel):
 
                 path.Transform(matrix)
                 handle.bounding_rects[0], handle.center = self.get_bounding(path)
-                path.Destroy()
+                #path.Destroy()
 
         for field in block.fields:
+
+            if not field.visible: continue
 
             font = wx.Font(field.size, wx.FONTFAMILY_ROMAN,
                            wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False)
@@ -1617,108 +1745,37 @@ class SchematicWindow(wx.Panel):
             field.bounding_rects[0] = (xt, yt, w, h)
             field.center = (xt + w * 0.5, yt + h * 0.5)
 
-        for ratio in block.ratios:
-
-            # font = wx.Font(ratio.size, wx.FONTFAMILY_DEFAULT,
-            #                wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False,
-            #                "Courier 10 Pitch")
-            #
-            # gcfont = gc.CreateFont(font, sb.DEVICE_COLOR)
-            # gc.SetFont(gcfont)
+        for equation in block.equations:
 
             xb, yb = self.snap(block.position)
-            xf, yf = ratio.position
+            xf, yf = equation.position
 
-            if ratio.rect_anchor:
-                if ratio.rect_align == sb.Alignment.CENTER:
-                    xf = xf * ratio.rect_anchor.w / ratio.rect_anchor.w0
-                    yf = yf * ratio.rect_anchor.h / ratio.rect_anchor.h0
-                    xf = xf + ratio.rect_anchor.x0 + ratio.rect_anchor.x
-                    yf = yf + ratio.rect_anchor.y0 + ratio.rect_anchor.y
+            if equation.rect_anchor:
+                if equation.rect_align == sb.Alignment.CENTER:
+                    xf = xf * equation.rect_anchor.w /  equation.rect_anchor.w0
+                    yf = yf * equation.rect_anchor.h /  equation.rect_anchor.h0
+                    xf = xf + equation.rect_anchor.x0 + equation.rect_anchor.x
+                    yf = yf + equation.rect_anchor.y0 + equation.rect_anchor.y
 
 
             bmp = block.bmp
 
             m = 5
-
             we, he = bmp.GetSize()
 
-            xr, yr = ratio.rect_anchor.x, ratio.rect_anchor.y
-            wr, hr = ratio.rect_anchor.w, ratio.rect_anchor.h
+            xr, yr = equation.rect_anchor.x, equation.rect_anchor.y
+            wr, hr = equation.rect_anchor.w, equation.rect_anchor.h
 
             we2 = min(we, wr - m * 2)
             he *= (we2 / we)
             he2 = min(he, hr - m * 2)
             we2 *= (he2 / he)
 
-            if ratio.align == sb.Alignment.CENTER:
+            if equation.align == sb.Alignment.CENTER:
                 xf = xb + wr / 2 - we2 / 2
                 yf = yb + hr / 2 - he2 / 2
 
             gc.DrawBitmap(bmp, xf, yf, we2, he2)
-
-            # num = unicode_print(ratio.numerator)
-            # den = unicode_print(ratio.denominator)
-            #
-            # wn, hn, dn, en = gc.GetFullTextExtent(num)
-            # wd, hd, dd, ed = gc.GetFullTextExtent(den)
-
-            # xn, yn = xb + xf, yb + yf
-            #
-            # xd, yd = xb + xf, yb + hn * 2 + yf
-            #
-            # if ratio.align == sb.Alignment.NW:
-            #     pass
-            #
-            # elif ratio.align == sb.Alignment.N:
-            #     xn -= wn / 2
-            #     xd -= wd / 2
-            #
-            # elif ratio.align == sb.Alignment.NE:
-            #     xn -= wn
-            #     xd -= wd
-            #
-            # elif ratio.align == sb.Alignment.W:
-            #     yn -= hn / 2
-            #     yd -= hd / 2
-            #
-            # elif ratio.align == sb.Alignment.CENTER:
-            #     xn -= wn / 2
-            #     yn -= hn / 2
-            #     xd -= wd / 2
-            #     yd -= hd / 2
-            #
-            # elif ratio.align == sb.Alignment.E:
-            #     xn -= wn
-            #     yn -= hn / 2
-            #     xd -= wd
-            #     yd -= hd / 2
-            #
-            # elif ratio.align == sb.Alignment.SW:
-            #     yn -= hn
-            #     yd -= hd
-            #
-            # elif ratio.align == sb.Alignment.S:
-            #     xn -= wn / 2
-            #     yn -= hn
-            #     xd -= wd / 2
-            #     yd -= hd
-            #
-            # elif ratio.align == sb.Alignment.SE:
-            #     xn -= wn
-            #     yn -= hn
-            #     xd -= wd
-            #     yd -= hd
-
-            # gc.DrawText(num, xn, yn - hn)
-            # gc.DrawText(den, xd, yd - hn)
-            # yline = yn + 0.5 * hn
-            # xline1 = min(xn, xd)
-            # xline2 = max(xn + wn, xd + wd)
-            # gc.DrawLines([(xline1, yline), (xline2, yline)])
-            #
-            # ratio.bounding_rects[0] = (xn, yn, wn, hn)
-            # ratio.center = (xn + wn * 0.5, yn + hn * 0.5)
 
     def draw_connector(self, connector, gc):
 
@@ -1742,11 +1799,11 @@ class SchematicWindow(wx.Panel):
             gc.SetBrush(self.brush)
 
         path = gc.CreatePath()
-        path.MoveToPoint(connector.start_connection_point.center)
+        path.MoveToPoint(*connector.start_connection_point.center)
 
         for seg in connector.segments:
             p1, p2 = seg
-            path.AddLineToPoint(self.snap(p2))
+            path.AddLineToPoint(*self.snap(p2))
 
         if connector.partial:
             path.AddLineToPoint(*connector.end)
@@ -1758,9 +1815,9 @@ class SchematicWindow(wx.Panel):
                 p1, p2 = connector.segments[-1]
                 connector.update_arrow(self.snap(p2))
             p1, p2, p3 = connector.arrow
-            path.MoveToPoint(p1)
-            path.AddLineToPoint(p2)
-            path.AddLineToPoint(p3)
+            path.MoveToPoint(*p1)
+            path.AddLineToPoint(*p2)
+            path.AddLineToPoint(*p3)
 
         gc.StrokePath(path)
 
@@ -1797,6 +1854,7 @@ class SchematicWindow(wx.Panel):
                     gc.FillPath(path)
 
         # draw ghost knee point:
+
         for seg in connector.segments:
             if seg.ghost_knee:
                 path = gc.CreatePath()
@@ -1805,7 +1863,7 @@ class SchematicWindow(wx.Panel):
                 path.AddCircle(x, y, r)
                 gc.FillPath(path)
 
-    def build_netlist(self):
+    def build_port_groups(self):
 
         groups = [[], ]
 
@@ -1865,23 +1923,28 @@ class SchematicWindow(wx.Panel):
             else:
                 port_groups.append(port_group)
 
-        # now build the netlist:
+        return port_groups
+
+    def build_netlist(self):
+
+        port_groups = self.build_port_groups()
 
         netlist = net.Netlist(self.name)
 
         engine2block = {}
 
         for name, block in self.blocks.items():
+
             if not block.is_ground:
-                nodemap = {}
-                for key, port in block.ports.items():
+
+                nodemap = {port.index:0 for port in block.ports.values()}
+
+                for port in block.ports.values():
                     for i, group in enumerate(port_groups):
                         if port in group:
                             nodemap[port.index] = i
-                sort = sorted(nodemap.items())
-                nodes = []
-                for k, v in sort:
-                    nodes.append(v)
+
+                nodes = [v for k, v in sorted(nodemap.items())]
 
                 if block.__class__.engine == engines["X"]:
 
@@ -1936,62 +1999,91 @@ class SchematicWindow(wx.Panel):
 
 
 class DeviceTree(wx.TreeCtrl):
+
     def __init__(self, parent, blocks):
 
         style = (wx.TR_FULL_ROW_HIGHLIGHT |
                  wx.TR_HAS_BUTTONS |
+                #wx.TR_TWIST_BUTTONS |
                  wx.TR_HIDE_ROOT |
                  wx.TR_HAS_VARIABLE_ROW_HEIGHT)
 
         wx.TreeCtrl.__init__(self, parent, style=style)
+
         self.blocks = blocks
 
         #for name, device_type in self.devices.items():
         self.root = self.AddRoot("Library")
         self.root.device_type = None
 
-        images = load.get_block_thumbnails(blocks, width=5)
+        images = load.get_block_thumbnails(blocks, width=5, fgcolor=sb.FG_COLOR, bgcolor=sb.BG_COLOR)
+
         images_sel = images.copy()
 
-        w, h = 36, 36
+        w, h = 32, 32
 
         imagelist = wx.ImageList(w, h)
         self.imagemap = {}
 
         for name in images:
+
             image = images[name].Scale(w, h, wx.IMAGE_QUALITY_BICUBIC)
             image_sel = images_sel[name].Scale(w, h, wx.IMAGE_QUALITY_BICUBIC)
-            self.imagemap[name] = (
-                imagelist.Add(image.ConvertToBitmap()),
-                imagelist.Add(image_sel.ConvertToBitmap()))
+
+            self.imagemap[name] = (imagelist.Add(image.ConvertToBitmap()),
+                                   imagelist.Add(image_sel.ConvertToBitmap()))
+
+        self.folder = imagelist.Add(wx.ArtProvider.GetBitmap(wx.ART_FOLDER))
+        self.folder_open = imagelist.Add(wx.ArtProvider.GetBitmap(wx.ART_FOLDER_OPEN))
 
         self.AssignImageList(imagelist)
 
         famnodes = {}
 
         for name, device_type in self.blocks.items():
+
             family = device_type.family
+
             if not family in famnodes:
-                famnodes[family] = self.AppendItem(self.root, family)
-                famnodes[family].device_type = None
+
+                item = self.AppendItem(self.root, family)
+                item.device_type = None
+
+                #self.SetItemImage(item, ifolder, which=wx.TreeItemIcon_Selected)
+                #self.SetItemImage(item, ifolder, which=wx.TreeItemIcon_Normal)
+                #self.SetItemImage(item, ifolder_open, which=wx.TreeItemIcon_Expanded)
+                #self.SetItemImage(item, ifolder_open, which=wx.TreeItemIcon_SelectedExpanded)
+
+                famnodes[family] = item 
+
             if name in self.imagemap:
                 index, index_sel = self.imagemap[name]
             else:
                 index, index_sel = -1, -1
+
             item = self.AppendItem(famnodes[family], name, index, index_sel)
+            #self.SetItemDropHighlight(item, highlight=True)
+
             self.SetItemData(item, name)
 
-
         # bindings:
+
         self.Bind(wx.EVT_TREE_BEGIN_DRAG, self.on_begin_drag)
         self.Bind(wx.EVT_TREE_SEL_CHANGED, self.on_selection_changed)
+        self.Bind(wx.EVT_TREE_ITEM_EXPANDED, self.on_item_expand)
+        self.Bind(wx.EVT_TREE_ITEM_COLLAPSED, self.on_item_collapsed)
 
         self.selected_item = None
+
+        self.SetBackgroundColour(sb.BG_COLOR)
+        self.SetForegroundColour(sb.FG_COLOR)
 
         self.ExpandAll()
 
     def on_begin_drag(self, event):
+
         if self.selected_item:
+
             name = self.GetItemData(self.selected_item)
             drag_source = wx.DropSource(self)
             dataobj = wx.TextDataObject(name)
@@ -2000,7 +2092,18 @@ class DeviceTree(wx.TreeCtrl):
             drag_source.DoDragDrop(True)
 
     def on_selection_changed(self, event):
+
         self.selected_item = event.GetItem()
+
+    def on_item_expand(self, event):
+
+        item = event.GetItem()
+        self.SetItemImage(item, self.folder_open)
+
+    def on_item_collapsed(self, event):
+
+        item = event.GetItem()
+        self.SetItemImage(item, self.folder)
 
 
 class MainFrame(gui.MainFrame):
@@ -2100,8 +2203,7 @@ class MainFrame(gui.MainFrame):
         self.szr_shell.Add(self.interactive, 1, wx.EXPAND)
 
         self.ntb_bottom.SetImageList(self.imagelist)
-        self.ntb_bottom.AddPage(self.pnl_shell, " Interactive", True,
-                                self.pylogo16)
+        self.ntb_bottom.AddPage(self.pnl_shell, "Python Interactive", True)
 
         pystyle = self.interactive.GetStyleAt(0)
 
@@ -2109,13 +2211,11 @@ class MainFrame(gui.MainFrame):
         start, end = self.interactive.GetSelection()
         text = self.interactive.GetSelectedText()
         lines = text.split("\n")[:3]
-        self.interactive.push("from subcircuit.netlist import Netlist",
-                              silent=False)
+        self.interactive.push("from subcircuit.netlist import Netlist", silent=False)
 
         stc.StyledTextCtrl.ClearAll(self.interactive)
         pyver = sys.version
-        self.interactive.AddText("\nPython {0}\n".format(pyver.replace("\n",
-                                                                       " ")))
+        self.interactive.AddText("\nPython {0}\n".format(pyver.replace("\n", " ")))
 
         self.interactive.StartStyling(self.interactive.GetLastPosition(), 0)
         self.interactive.push("\n")  # force imput prompt
@@ -2124,7 +2224,7 @@ class MainFrame(gui.MainFrame):
             sys.stdout = self.interactive
             sys.stderr = self.interactive
 
-        load.load_engines_to_module(sys.modules[__name__])
+        load.load_engines_to_module(sys.modules[__name__], "devices")
 
         # device tree:
 
@@ -2138,27 +2238,49 @@ class MainFrame(gui.MainFrame):
         self.szr_tree.Add(self.device_tree, 1, wx.EXPAND | wx.ALL)
 
         self.ntb_left.SetImageList(self.imagelist)
-        self.ntb_left.AddPage(self.pnl_tree, " Devices", True, self.chip16)
+        self.ntb_left.AddPage(self.pnl_tree, " Devices", True)
 
         self.statusbar.SetStatusText("Ready")
+
+        self.SetBackgroundColour(sb.BG_COLOR)
+        self.SetForegroundColour(sb.FG_COLOR)
+
+        self.menu.SetBackgroundColour(sb.BG_COLOR)
+        self.menu.SetForegroundColour(sb.FG_COLOR)
+
+        self.pnl_left.SetBackgroundColour(sb.BG_COLOR)
+        self.pnl_left.SetForegroundColour(sb.FG_COLOR)
+
+        self.pnl_top.SetBackgroundColour(sb.BG_COLOR)
+        self.pnl_top.SetForegroundColour(sb.FG_COLOR)
+
+        self.pnl_bottom.SetBackgroundColour(sb.BG_COLOR)
+        self.pnl_bottom.SetForegroundColour(sb.FG_COLOR)
 
         self.Refresh()
 
     def new_schem(self, name=None):
+
         global active_schematic
+
         if not name:
             name = DEF_SCHEM_NAME.format(self.schcnt) + ".sch"
             unique = False
+
             while not unique:
                 unique = True
+
                 for schem in self.schematics:
                     if name == schem:
                         unique = False
                         break
+
                 if not unique:
                     self.schcnt += 1
                     name = DEF_SCHEM_NAME.format(self.schcnt) + ".sch"
+
         self.schcnt += 1
+
         sch = sb.Schematic(name)
         sch.sim_settings = DEF_SIM_SETTINGS
         schem = SchematicWindow(subcircuit.ntb_editor, sch)
@@ -2166,8 +2288,8 @@ class MainFrame(gui.MainFrame):
         paramlist = sch.parameters
         self.param_table = param.ParameterTable(subcircuit.ntb_editor, paramlist)
 
-        self.ntb_editor.AddPage(schem, "Schematic", True, self.schem16)
-        self.ntb_editor.AddPage(self.param_table, "Parameters", False, self.schem16)
+        self.ntb_editor.AddPage(schem, "Schematic", True)
+        self.ntb_editor.AddPage(self.param_table, "Parameters", False)
 
         self.schematics[name] = schem
         self.active_schem = schem
@@ -2179,6 +2301,7 @@ class MainFrame(gui.MainFrame):
         return schem
 
     def add_device(self, type_):
+
         if self.active_schem:
             self.active_schem.start_add(type_)
         else:
@@ -2189,77 +2312,132 @@ class MainFrame(gui.MainFrame):
             wx.MessageBox(msg, "Add Device Error", parent=self)
 
     def save_schematic(self, schem, path):
+
         try:
-            with open(path, 'w') as f:
-                sch = schem.schematic.clone()
-                paramlist = self.param_table.paramlist
-                sch.parameters = paramlist
-                # remove plot curves:
-                for device in sch.blocks.values():
-                    device.plot_curves = []
-                    try:
-                        device.bmp = None
-                    except:
-                        pass
+
+            sch = schem.schematic.copy()
+
+            paramlist = self.param_table.paramlist
+            sch.parameters = paramlist
+
+            # remove plot curves:
+            for device in sch.blocks.values():
+                device.plot_curves = []
+                try:
+                    device.bmp = None
+                except:
+                    pass
+
+            with open(path, 'wb') as f:
                 pickle.dump(sch, f)
-                wx.MessageBox("File saved to: [{0}]".format(path))
-                pth, file_ = os.path.split(path)
-                self.ntb_editor.SetPageText(self.ntb_editor.GetSelection(),
-                                            file_)
-                self.active_schem.name = file_
+  
+            wx.MessageBox("File saved to: [{0}]".format(path))
+
+            pth, file_ = os.path.split(path)
+
+            self.ntb_editor.SetPageText(self.ntb_editor.GetSelection(), file_)
+            self.active_schem.name = file_
 
         except Exception as e:
-            wx.MessageBox("File save failed. {0}".format(e.message))
+
+            wx.MessageBox("File save failed. {0}".format(str(e)))
 
     def open_schematic(self, path):
+
         global active_schematic
+
         d, name = os.path.split(path)
-        f = open(path)
-        sch = pickle.load(f)
-        sch.name = name
-        sch.path = path
-        schem = SchematicWindow(subcircuit.ntb_editor, sch)
-        self.schematics[name] = schem
-        self.active_schem = schem
 
-        for block in self.active_schem.blocks.values():
-            block.design_update()
+        try:
 
-        paramlist = sch.parameters
-        self.param_table = param.ParameterTable(subcircuit.ntb_editor, paramlist)
+            with open(path, 'rb') as f:
+                sch = pickle.load(f)
 
-        self.ntb_editor.AddPage(schem, "Block Diagram", True, self.schem16)
-        self.ntb_editor.AddPage(self.param_table, "Parameters", False, self.schem16)
-
-    def run(self):
-        if self.active_schem:
-            self.netlist = self.active_schem.build_netlist()
-
-            settings = self.active_schem.sim_settings
-
-            dt = settings['dt']
-            tmax = settings['tmax']
-            maxitr = settings['maxitr']
-            tol = settings['tol']
-            voltages = settings['voltages']
-            currents = settings['currents']
-
-            self.netlist.trans(dt, tmax)
+            sch.name = name
+            sch.path = path
+            schem = SchematicWindow(subcircuit.ntb_editor, sch)
+            self.schematics[name] = schem
+            self.active_schem = schem
 
             for block in self.active_schem.blocks.values():
-                block.end()
+                block.design_update()
 
-            chans = []
+            paramlist = sch.parameters
 
-            for v in voltages.split():
-                chans.append(inter.Voltage(int(v.strip())))
+            self.param_table = param.ParameterTable(subcircuit.ntb_editor, paramlist)
 
-            for i in currents.split():
-                chans.append(inter.Current(i.strip()))
+            self.ntb_editor.AddPage(schem, "Schematic", True)
+            self.ntb_editor.AddPage(self.param_table, "Parameters", False)
 
-            self.netlist.plot(*chans)
+        except BaseException as e:
 
-            self.active_schem.Refresh()
+            print(f"Error loading file: [{path}]: {str(e)}")
+
+    def run(self):
+
+        if not self.active_schem:
+            return
+
+        self.netlist = self.active_schem.build_netlist()
+
+        settings = self.active_schem.sim_settings
+
+        dt = settings['dt']
+        tmax = settings['tmax']
+        maxitr = settings['maxitr']
+        tol = settings['tol']
+        voltages = settings['voltages']
+        currents = settings['currents']
+
+        self.netlist.trans(dt, tmax)
+
+        for block in self.active_schem.blocks.values():
+            block.end()
+
+        chans = []
+
+        for v in voltages.split():
+            chans.append(inter.Voltage(int(v.strip())))
+
+        for i in currents.split():
+            chans.append(inter.Current(i.strip()))
+
+        self.netlist.plot(*chans)
+
+        self.active_schem.Refresh()
+
+    def run_qss(self):
+
+        if not self.active_schem:
+            return
+
+        port_groups = self.build_port_groups()
+
+        settings = self.active_schem.sim_settings
+
+        dt = settings['dt']
+        tmax = settings['tmax']
+        maxitr = settings['maxitr']
+        tol = settings['tol']
+        voltages = settings['voltages']
+        currents = settings['currents']
+
+        #self.netlist.trans(dt, tmax)
+        #
+        #for block in self.active_schem.blocks.values():
+        #    block.end()
+        #
+        #chans = []
+        #
+        #for v in voltages.split():
+        #    chans.append(inter.Voltage(int(v.strip())))
+        #
+        #for i in currents.split():
+        #    chans.append(inter.Current(i.strip()))
+        #
+        #self.netlist.plot(*chans)
+
+        self.active_schem.Refresh()
 
     def gen_netlist(self, schem):
 
@@ -2306,13 +2484,16 @@ class MainFrame(gui.MainFrame):
         self.active_script = script
 
     def add_gadget(self, type_):
+
         if self.active_schem:
             self.active_schem.start_add(type_)
 
     def on_new_schem(self, event):
+
         self.new_schem()
 
     def on_open(self, event):
+
         dlg = wx.FileDialog(self, message="Save Schematic",
                             defaultFile="",
                             wildcard="*.sch",
@@ -2325,13 +2506,16 @@ class MainFrame(gui.MainFrame):
             self.open_schematic(path)
 
     def on_save_as(self, event):
+
         schem = None
+
         if self.active_schem:
             schem = self.active_schem
         elif self.schematics:
             schem = self.schematics[0]
 
         if schem:
+
             name = schem.name.split(".")[0]
             name = "{0}.sch".format(name)
             dlg = wx.FileDialog(self,
@@ -2345,17 +2529,21 @@ class MainFrame(gui.MainFrame):
                 self.save_schematic(schem, path)
 
     def on_save(self, event):
+
         schem = None
+
         if self.active_schem:
             schem = self.active_schem
         elif self.schematics:
             schem = self.schematics[0]
 
         if schem:
+
             if schem.path:
                 self.save_schematic(schem, schem.path)
             else:
                 name = schem.name
+
                 if len(name.split(".")) > 1:
                     name = "".join(name.split(".")[:-1])
                 name += ".sch"
@@ -2370,44 +2558,62 @@ class MainFrame(gui.MainFrame):
                     schem.path = path
 
     def on_add_ground(self, event):
+
         self.add_device("GND")
 
     def on_add_device(self, event):
+
         type_ = self.add_event_devices[event.GetId()]
         self.add_device(type_)
 
     def on_setup(self, event):
+
         self.active_schem.sim_settings = PropertyGetter.update_properties(self,
                 "Simulation Setup", self.active_schem.sim_settings)
 
     def on_run(self, event):
+
         self.run()
 
+    def on_run_qss(self, event):
+
+        self.run_qss()
+
     def on_run_script(self, event):
+
         if self.active_script:
+
             print("Runnning active script...".format())
             code = self.active_script.GetText()
+
             for line in code.split("\n"):
                 if line:
                     self.interactive.push(line)
+
             print("Complete.")
 
     def on_page_close(self, event):
+
         index = event.GetSelection()
 
     def on_schem_context(self, event):
+
         pass
 
     def on_gen_netlist(self, event):
+
         self.gen_netlist(self.active_schem)
 
 
 class SubCircuitApp(wx.App):
+
     def __init__(self):
+
         wx.App.__init__(self)
         #self.Bind(wx.EVT_ACTIVATE, self.on_activate)
 
     def on_activate(self, event):
+
         self.GetTopWindow().Raise()
 
 
@@ -2431,7 +2637,7 @@ if __name__ == '__main__':
 
     if is_windows:
         import ctypes
-        myappid = 'josephmhood.subcircuit.v01'
+        myappid = 'subcircuit.v01'
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
     subcircuit.Show()

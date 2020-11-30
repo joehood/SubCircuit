@@ -1,18 +1,4 @@
 """Generic Scope Device.
-
-Copyright 2014 Joe Hood
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
 """
 
 import wx
@@ -22,32 +8,42 @@ import subcircuit.interfaces as inter
 
 
 class Scope(inter.SignalDevice):
+
     def __init__(self, nodes, **parameters):
+
         inter.SignalDevice.__init__(self, nodes, **parameters)
         self.time = []
         self.data = []
 
     def connect(self):
+
         n1 = self.nodes[0]
         self.port2node = {0: self.get_node_index(n1)}
 
     def update(self):
+
         pass
 
     def start(self, dt):
+
         pass
 
     def step(self, dt, t):
+
         pass
 
     def post_step(self, dt, t):
+
         self.time.append(t)
         self.data.append(self.get_port_value(0))
 
 
 class Scope5(inter.SignalDevice):
+
     def __init__(self, nodes, **parameters):
+
         inter.SignalDevice.__init__(self, nodes, **parameters)
+
         self.time = []
         self.data1 = []
         self.data2 = []
@@ -56,7 +52,9 @@ class Scope5(inter.SignalDevice):
         self.data5 = []
 
     def connect(self):
+
         n1, n2, n3, n4, n5 = self.nodes
+
         self.port2node = {0: self.get_node_index(n1),
                           1: self.get_node_index(n2),
                           2: self.get_node_index(n3),
@@ -64,16 +62,21 @@ class Scope5(inter.SignalDevice):
                           4: self.get_node_index(n5)}
 
     def update(self):
+
         pass
 
     def start(self, dt):
+
         pass
 
     def step(self, dt, t):
+
         pass
 
     def post_step(self, dt, t):
+
         self.time.append(t)
+
         self.data1.append(self.get_port_value(0))
         self.data2.append(self.get_port_value(1))
         self.data3.append(self.get_port_value(2))
@@ -82,11 +85,14 @@ class Scope5(inter.SignalDevice):
 
 
 class Scope5Block(sb.Block):
+
     """Schematic graphical inteface for V Scope 3ph device."""
+
     friendly_name = "Generic Scope (5 port)"
     family = "Meters"
     label = "Scope"
     engine = Scope5
+
     color1 = wx.Colour(255, 80, 80)
     color2 = wx.Colour(120, 120, 255)
     color3 = wx.Colour(80, 255, 80)
@@ -102,8 +108,9 @@ class Scope5Block(sb.Block):
     symbol.rects.append((12, 12, 136, 96, 1))
 
     def __init__(self, name):
-        # init super:
+
         sb.Block.__init__(self, name, None, is_signal_device=True)
+
         self.size = (160, 120)
         self.margin = 12
 
@@ -240,6 +247,7 @@ class Scope5Block(sb.Block):
                 self.plot_curves.append((plot_curve5, Scope5Block.color5))
 
     def get_engine(self, nodes):
+
         if len(nodes) == 0:
             nodes += [0, 0, 0, 0, 0]
         if len(nodes) == 1:
@@ -255,7 +263,9 @@ class Scope5Block(sb.Block):
 
 
 class ScopeBlock(sb.Block):
+
     """Schematic graphical interface for Scope device."""
+
     friendly_name = "Generic Scope"
     family = "Meters"
     label = "Scope"
@@ -271,6 +281,7 @@ class ScopeBlock(sb.Block):
     symbol.rects.append((12, 12, 136, 96, 1))
 
     def __init__(self, name):
+
         # init super:
         sb.Block.__init__(self, name, None, is_signal_device=True)
         self.size = (160, 120)
@@ -306,6 +317,7 @@ class ScopeBlock(sb.Block):
         (w, h), m = self.size, self.margin
 
         if max(times) > 0.0:
+
             tscale = (w - m * 2.0 - 4) / max(times)
             toffset = m + 4
 
@@ -332,5 +344,6 @@ class ScopeBlock(sb.Block):
             self.plot_curves.append((plot_curve, ScopeBlock.color))
 
     def get_engine(self, nodes):
+
         self.engine = Scope(nodes)
         return self.engine

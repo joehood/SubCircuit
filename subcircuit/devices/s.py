@@ -220,7 +220,7 @@ class SBlock(sb.Block):
 
     # box:
     symbol.lines.append(((60, 65), (75, 38)))
-    symbol.rects.append((35, 20, 50, 60, 3))
+    symbol.rects.append((35, 20, 50, 60, 2))
 
     def __init__(self, name):
         # init super:

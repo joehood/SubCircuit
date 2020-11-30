@@ -20,7 +20,9 @@ import subcircuit.sandbox as sb
 
 
 class GndBlock(sb.Block):
+
     """Schematic graphical inteface for GRD device."""
+
     friendly_name = "Ground"
     family = "Elementary"
     label = "G"
@@ -37,15 +39,15 @@ class GndBlock(sb.Block):
     symbol.lines.append(((58, 73), (62, 73)))
 
     def __init__(self, name):
+
         # init super:
-        sb.Block.__init__(self, name, None, is_ground=True)
+        sb.Block.__init__(self, name, None, is_ground=True, label_visible=False)
 
         # port:
         self.ports['ground'] = sb.Port(self, 0, (60, 40), is_ground=True)
 
-
-
     def get_engine(self, nodes):
+
         raise Exception("GND Block has no engine.")
 
 

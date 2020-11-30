@@ -31,6 +31,15 @@
     <Compile Include="subcircuit\devices\k.py" />
     <Compile Include="subcircuit\devices\l.py" />
     <Compile Include="subcircuit\devices\q.py" />
+    <Compile Include="subcircuit\devices\qss\dqnode.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="subcircuit\devices\qss\dqbranch.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="subcircuit\devices\qss\limbranch.py" />
+    <Compile Include="subcircuit\devices\qss\limnode.py" />
+    <Compile Include="subcircuit\devices\qss\__init__.py" />
     <Compile Include="subcircuit\devices\r.py" />
     <Compile Include="subcircuit\devices\s.py" />
     <Compile Include="subcircuit\devices\scope.py" />
@@ -53,6 +62,7 @@
     <Compile Include="subcircuit\model\param.py" />
     <Compile Include="subcircuit\model\__init__.py" />
     <Compile Include="subcircuit\netlist.py" />
+    <Compile Include="subcircuit\qdl.py" />
     <Compile Include="subcircuit\sandbox.py" />
     <Compile Include="subcircuit\simulator.py" />
     <Compile Include="subcircuit\stimuli.py" />
@@ -78,12 +88,16 @@
     <Content Include="subcircuit\artwork\screen3.png" />
     <Content Include="subcircuit\artwork\screen4.png" />
     <Content Include="subcircuit\artwork\screen5.png" />
+    <Content Include="subcircuit\devices\qss\__pycache__\limbranch.cpython-37.pyc" />
+    <Content Include="subcircuit\devices\qss\__pycache__\__init__.cpython-37.pyc" />
     <Content Include="subcircuit\subcircuit.ico" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="subcircuit" />
     <Folder Include="subcircuit\artwork" />
     <Folder Include="subcircuit\devices" />
+    <Folder Include="subcircuit\devices\qss\" />
+    <Folder Include="subcircuit\devices\qss\__pycache__\" />
     <Folder Include="subcircuit\examples" />
     <Folder Include="subcircuit\mathutils" />
     <Folder Include="subcircuit\model" />

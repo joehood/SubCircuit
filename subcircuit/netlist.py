@@ -1,23 +1,8 @@
-"""Contains Circuit and SubCircuit class definitions.
-
-Copyright 2014 Joe Hood
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+"""Netlist model.
 """
 
-from __future__ import print_function
-from copy import deepcopy as clone
 import sys
+from copy import deepcopy as clone
 
 import numpy as np
 import numpy.linalg as la
@@ -25,13 +10,16 @@ import numpy.linalg as la
 import subcircuit.interfaces as inter
 import subcircuit.simulator as sim
 import subcircuit.loader as loader
+import subcircuit.qdl as qdl
 
 
 class Netlist():
 
-    """A SPICE netlist object."""
+    """A SPICE netlist model
+    """
 
     def __init__(self, title=''):
+
         """Creates a netlist object."""
 
         # title:
@@ -50,7 +38,7 @@ class Netlist():
         self.across_last = None  # across at last iteration
         self.across_history = None  # across at end of last time step
         self.jac = None
-        self.sjac = None  # sparce jacobian for fast factorization
+        self.sjac = None  # sparse jacobian for fast factorization
         self.bequiv = None
 
         # simulator:
@@ -114,6 +102,7 @@ class Netlist():
                     raise SubCircuitError(msg)
 
     def start(self, dt):
+
         """Calls setup() on all of this subcircuit devices.
         Setup is called at the beginning of the simulation and allows the
         intial stamps to be applied.
@@ -144,8 +133,10 @@ class Netlist():
             self.stamp()
 
     def stamp(self):
+
         """Stamps the main subcircuit devices.
         """
+
         self.jac[:, :] = 0.0
         self.bequiv[:] = 0.0
         for device in self.devices.values():
@@ -156,11 +147,13 @@ class Netlist():
                         self.jac[ni, nj] += device.jac[pi, pj]
 
     def step(self, dt, t):
+
         """Steps the circuit to the next timestep.
         :param t: the current time.
         :param dt: the current timestep
         :return: True is step is successful (no errors)
         """
+
         success = True
 
         k = 0
@@ -193,10 +186,12 @@ class Netlist():
         return success, k
 
     def print_matrices(self):
+
         s = "\nt = {0}\n".format(self.simulator.get_current_time())
         print(s)
         row = " " * 13
         names = [0]
+
         for i in range(1, self.nodenum):
             node_name = ""
             for name, index in self.nodes.items():
@@ -206,6 +201,7 @@ class Netlist():
                     break
             s = "{0:>12}  ".format(node_name)
             row += s
+
         print(row)
         print(" " * 14 + "." + (len(row) - 9) * '-' + ".")
 
@@ -219,15 +215,18 @@ class Netlist():
             s = "    |     {0:12.2g}"
             row += s.format(self.bequiv[i].astype(float))
             print(row)
+
         print(" " * 14 + "'" + (len(row) - 55) * '-' + "'")
 
     def minor_step(self, dt, t, k):
+
         """Called at each Newton iteration until convergance or itr > maxitr.
         :param k: Current newton iteration index
         :param t: Current simulation time
         :param dt: Current simulation timestep
         :return: True is step is successful (no errors)
         """
+
         success = True
 
         # minor step all devices in this subcircuit:
@@ -239,6 +238,7 @@ class Netlist():
 
         # solve across vector from linear system:
         # jacobian * across = b-equivalent (Ax = B):
+
         try:
             #lu = sla.splu(self.sjac)
             #self.across[1:] = lu.solve(self.bequiv[1:])
@@ -246,7 +246,7 @@ class Netlist():
 
         except la.LinAlgError as laerr:
             print("Linear algebra error occured while attempting to solve "
-                  "circuit. Circuit not solved. Error details: ", laerr.message)
+                  "circuit. Circuit not solved. Error details: ", str(laerr))
             success = False
 
         # check convergence criteria:
@@ -263,6 +263,7 @@ class Netlist():
         return success
 
     def is_signal_device(self, device):
+
         return isinstance(device, inter.SignalDevice)
 
     def signal_step(self, dt, t):
@@ -281,12 +282,14 @@ class Netlist():
                 device.step(dt, t)
 
     def get_node_index(self, key):
+
         if not key in self.nodes:
             self.nodenum += 1
             self.nodes[key] = self.nodenum - 1
         return self.nodes[key]
 
     def create_internal(self, name):
+
         self.nodenum += 1
         self.internalnum += 1
         if not name in self.nodes:
@@ -298,11 +301,13 @@ class Netlist():
         return self.nodenum - 1
 
     def device(self, name, device):
+
         """Add a device to the netlist
         :param name:
         :param device:
         :return: True if successful. False if failed.
         """
+
         if not name in self.devices:
             self.devices[name] = device
             device.name = name
@@ -313,26 +318,30 @@ class Netlist():
             return False
 
     def model(self, name, model):
+
         """Add a model (.model) definition to the Circuit.
         :param model: Model definition to add.
         :return: None
         """
+
         self.models[name] = model
 
     def subckt(self, name, subckt):
+
         """Adds subcircuit (.subckt) definition to the circuit.
         Also creates a subcircuit generator object
         :param subckt:
         :return: Subcircuit insatnce generator
         """
+
         self.subckts[name] = subckt
         subckt.name = name
         subckt.netlist = self
         return subckt
 
     def trans(self, tstep, tstop, tstart=None, tmax=None, uic=False):
-        """
-        Run transient simulation.
+
+        """ Run transient simulation.
         :param tstep: Time step in seconds
         :param tstop: Simulation stop time in seconds
         :param tstart: TODO
@@ -340,27 +349,31 @@ class Netlist():
         :param uic: Flag for use initial conditions
         :return: None
         """
+
         self.flatten()
         self.simulator.trans(tstep, tstop, tstart, tmax, uic)
 
     def plot(self, *variables, **kwargs):
+
         """ Plot selected circuit variables
         :param variables: Plottables. Example: Voltage(1,2), Current('VSENSE')
         :param kwargs: TODO
         :return: None
         """
+
         return self.simulator.plot(*variables, **kwargs)
 
     def simulation_hook(self, dt, t):
+
         pass
 
     def load_devices(self):
+
         loader.load_engines_to_module(sys.modules["__main__"])
 
 
 class SubCircuitError(Exception):
+
     def __init__(self, msg):
-        """Creates a new PySpyceError
-        :param msg: Error message
-        """
-        Exception.__init__(self, "PySpyce Error: {0}".format(msg))
+
+        Exception.__init__(self, f"SubCircuitError Error: {msg}")
